@@ -1,0 +1,25 @@
+# ==============================================================================
+# Specialization Layout & Resource Definition
+# Profession: Guardian
+# Specialization: Core
+# ==============================================================================
+
+profession: Guardian
+elite_spec: Core
+display_name: "Guardian - Core"
+description: "3 Virtues (F1-F3 / M5, M4, Shift+M5) positioned above Weapon Skills 2-4"
+
+mechanic_bar:
+  f_slots_count: 3
+  slots:
+    mech_f1: [0.2040, 0.1644, 0.0550, 0.2740]  # Virtue of Justice (M5)
+    mech_f2: [0.2610, 0.1644, 0.0550, 0.2740]  # Virtue of Resolve (M4)
+    mech_f3: [0.3180, 0.1644, 0.0550, 0.2740]  # Virtue of Courage (Shift+M5)
+  labels:
+    mech_f1: "V1(M5)"
+    mech_f2: "V2(M4)"
+    mech_f3: "V3(Shift+M5)"
+
+resource:
+  type: none
+  name: none

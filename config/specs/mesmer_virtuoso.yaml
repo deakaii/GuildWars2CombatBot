@@ -1,0 +1,38 @@
+# ==============================================================================
+# Specialization Layout & Resource Definition
+# Profession: Mesmer
+# Specialization: Virtuoso
+# ==============================================================================
+
+profession: Mesmer
+elite_spec: Virtuoso
+display_name: "Mesmer - Virtuoso"
+description: "5 Bladesongs (F1-F5) and 5 Blade Pips above F2-F4"
+
+# Mechanic skill slots (Bladesongs F1 - F5) normalized relative to calibrated HUD box [0.0 - 1.0]
+# Format: [norm_x, norm_y, norm_w, norm_h]
+mechanic_bar:
+  f_slots_count: 5
+  slots:
+    mech_f1: [0.0954, 0.1644, 0.0724, 0.2740]  # Bladesong Harmony (M5)
+    mech_f2: [0.1711, 0.1644, 0.0724, 0.2740]  # Bladesong Sorrow (M4)
+    mech_f3: [0.2467, 0.1644, 0.0724, 0.2740]  # Bladesong Dissonance (Shift+M5)
+    mech_f4: [0.3224, 0.1644, 0.0724, 0.2740]  # Bladesong Distortion (Shift+M4)
+    mech_f5: [0.3980, 0.1644, 0.0724, 0.2740]  # Bladesong Requiem (F5)
+  labels:
+    mech_f1: "F1:Harmony"
+    mech_f2: "F2:Sorrow"
+    mech_f3: "F3:Disson"
+    mech_f4: "F4:Distort"
+    mech_f5: "F5:Requiem"
+
+# Spec-specific resource definition (5 Blade Pips)
+resource:
+  type: discrete_pips
+  name: blades
+  max_pips: 5
+  bbox: [0.1875, 0.1096, 0.1283, 0.1096]  # 5 glowing magenta daggers above F2-F4
+  color_preset: magenta_blades
+  brightness_threshold: 70.0
+  saturation_threshold: 30.0
+  inner_core_ratio: 0.55

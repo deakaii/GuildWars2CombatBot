@@ -12,6 +12,7 @@ from behaviors.base import BaseBehavior
 from core.detector import VisualDetector
 from core.input_controller import InputController
 from core.cooldown_detector import UniversalCooldownDetector
+from core.resource_detector import UniversalResourceDetector
 from core.rotation_framework import RotationStateMachine, RotationAction, RotationPhase
 from core.rotation_parser import parse_build_rotation
 
@@ -30,6 +31,7 @@ class ConfigurableRotationBehavior(BaseBehavior):
         self.spec = spec
         self.state_machine = RotationStateMachine(name, cancel_slip_probability=0.15)
         self.cooldown_detector = UniversalCooldownDetector(profession=profession, spec=spec)
+        self.resource_detector = UniversalResourceDetector(spec_config=build_data)
         self.pending_action: Optional[RotationAction] = None
 
         self._configure_rotation(build_data)
@@ -59,18 +61,30 @@ class ConfigurableRotationBehavior(BaseBehavior):
         now = time.time()
 
         def is_action_ready_filter(act: RotationAction) -> bool:
+            if act.is_auto_attack:
+                return True
             if frame is None or frame.size == 0:
                 return True
+
+            # 1. Slot cooldown check via visual shader signatures
             key_clean = act.key.lower()
             slot_id = self.cooldown_detector.resolve_slot_id(key_clean)
             if slot_id in self.cooldown_detector.slots:
-                return self.cooldown_detector.is_slot_ready(frame, slot_id)
+                if not self.cooldown_detector.is_slot_ready(frame, slot_id):
+                    return False
+
+            # 2. Resource prerequisites (charges, pips, energy, life force)
+            if act.min_resource is not None:
+                if not self.resource_detector.is_resource_sufficient(frame, act.min_resource):
+                    return False
+
+            if act.max_resource is not None:
+                if not self.resource_detector.is_resource_under(frame, act.max_resource):
+                    return False
+
             return True
 
-        if self.state_machine.phase == RotationPhase.OPENER:
-            next_action = self.state_machine.get_next_action(now)
-        else:
-            next_action = self.state_machine.get_next_action(now, is_action_ready_fn=is_action_ready_filter)
+        next_action = self.state_machine.get_next_action(now, is_action_ready_fn=is_action_ready_filter)
 
         if not next_action:
             self.pending_action = None

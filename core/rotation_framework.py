@@ -30,7 +30,10 @@ class RotationAction:
         is_instant: bool = False,
         cancellable: bool = True,
         is_auto_attack: bool = False,
-        double_tap: bool = False
+        double_tap: bool = False,
+        min_resource: Optional[float] = None,
+        max_resource: Optional[float] = None,
+        resource_type: Optional[str] = None
     ):
         self.name = name
         self.key = key
@@ -43,6 +46,9 @@ class RotationAction:
         self.cancellable = cancellable
         self.is_auto_attack = is_auto_attack
         self.double_tap = double_tap
+        self.min_resource = float(min_resource) if min_resource is not None else None
+        self.max_resource = float(max_resource) if max_resource is not None else None
+        self.resource_type = resource_type
         self.last_cast_time: float = 0.0
 
     def is_off_cooldown(self, current_time: float) -> bool:

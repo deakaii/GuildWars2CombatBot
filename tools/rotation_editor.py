@@ -26,40 +26,13 @@ from core.rotation_parser import (
     save_build,
     dict_to_action,
     action_to_dict,
-    parse_build_rotation
+    parse_build_rotation,
+    ingest_llm_payload,
+    STANDARDIZED_LLM_TEMPLATE
 )
 
 
-DEFAULT_LLM_PROMPT = """You are a Guild Wars 2 Combat Rotation Serializer for an automated rotation engine.
-Convert the provided combat rotation guide/text into a valid JSON object matching the exact schema below.
-
-CRITICAL RULES:
-1. Return ONLY the valid JSON object. Do not include markdown headers or commentary outside the JSON.
-2. Skill keybinds must map to standard keyboard keys: "1", "2", "3", "4", "5", "q", "e", "r", "t", "f1", "f2", "f3", "f4", "`".
-3. Ground-targeted skills (Jump Shot, Throw Mine, Symbol of Punishment, Sword of Justice) MUST have "double_tap": true.
-4. Off-GCD skills (Virtues, Mech commands F1-F3, Instant Buffs) MUST have "is_instant": true.
-5. Passive filler auto-attacks (e.g. Rifle Burst 1) MUST have "is_auto_attack": true.
-6. Rotation Type: Set "priority_list", "rigid_loop", or "hybrid".
-
-JSON SCHEMA:
-{
-  "name": "Build Name",
-  "description": "Short description",
-  "rotation_type": "priority_list",
-  "opener": [
-    { "name": "Skill Name", "key": "3", "cast_delay": 0.4, "cooldown": 8.0, "double_tap": false }
-  ],
-  "loop": [],
-  "priority_list": [
-    { "name": "Skill Name", "key": "2", "priority": 90, "cooldown": 8.0, "cast_delay": 0.5, "double_tap": false }
-  ],
-  "mechanic_skills": [
-    { "name": "Mechanic Skill", "key": "f1", "priority": 95, "cooldown": 15.0, "is_instant": true }
-  ]
-}
-
-Here is the rotation text to process:
-[PASTE ROTATION GUIDE HERE]"""
+DEFAULT_LLM_PROMPT = STANDARDIZED_LLM_TEMPLATE
 
 
 class SkillEditDialog(tk.Toplevel):
@@ -408,31 +381,13 @@ class LLMImportDialog(tk.Toplevel):
             messagebox.showwarning("Empty Input", "Please paste JSON or YAML text into the text area.", parent=self)
             return
 
-        # Attempt to strip markdown ```json block wrappers if present
-        if raw.startswith("```"):
-            lines = raw.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].strip() == "```":
-                lines = lines[:-1]
-            raw = "\n".join(lines).strip()
-
-        data = None
         try:
-            data = json.loads(raw)
-        except Exception:
-            try:
-                data = yaml.safe_load(raw)
-            except Exception as e:
-                messagebox.showerror("Parsing Failure", f"Failed to parse text as JSON or YAML.\n\nError: {e}", parent=self)
-                return
-
-        if not isinstance(data, dict):
-            messagebox.showerror("Invalid Format", "Payload must be a dictionary object containing rotation keys.", parent=self)
+            parsed = ingest_llm_payload(raw)
+            self.imported_data = parsed["build_data"]
+            self.destroy()
+        except Exception as e:
+            messagebox.showerror("Parsing Failure", f"Failed to parse rotation payload:\n\n{e}", parent=self)
             return
-
-        self.imported_data = data
-        self.destroy()
 
 
 class RotationEditorDialog(tk.Toplevel):
@@ -714,10 +669,21 @@ class RotationEditorDialog(tk.Toplevel):
             del skills_list[idx]
             refresh_table()
 
+        def add_swap():
+            skills_list.append({
+                "name": "Weapon Swap (~)",
+                "key": "~",
+                "cast_delay": 0.15,
+                "cooldown": 9.8,
+                "is_instant": True
+            })
+            refresh_table()
+
         tk.Button(btn_panel, text="▲  Move Up", font=("Segoe UI", 9, "bold"), bg="#313244", fg="#cdd6f4", bd=0, pady=5, cursor="hand2", command=move_up).pack(fill="x", pady=3)
         tk.Button(btn_panel, text="▼  Move Down", font=("Segoe UI", 9, "bold"), bg="#313244", fg="#cdd6f4", bd=0, pady=5, cursor="hand2", command=move_down).pack(fill="x", pady=3)
         tk.Frame(btn_panel, bg="#45475a", height=1).pack(fill="x", pady=6)
         tk.Button(btn_panel, text="➕  Add Step", font=("Segoe UI", 9, "bold"), bg="#89b4fa", fg="#11111b", bd=0, pady=6, cursor="hand2", command=add_step).pack(fill="x", pady=3)
+        tk.Button(btn_panel, text="🔄  Add Swap (~)", font=("Segoe UI", 9, "bold"), bg="#a6e3a1", fg="#11111b", bd=0, pady=5, cursor="hand2", command=add_swap).pack(fill="x", pady=3)
         tk.Button(btn_panel, text="✏  Edit Step", font=("Segoe UI", 9), bg="#313244", fg="#cdd6f4", bd=0, pady=5, cursor="hand2", command=edit_step).pack(fill="x", pady=3)
         tk.Button(btn_panel, text="🗑  Delete Step", font=("Segoe UI", 9), bg="#313244", fg="#f38ba8", bd=0, pady=5, cursor="hand2", command=delete_step).pack(fill="x", pady=3)
 

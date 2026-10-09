@@ -39,7 +39,9 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
     threshold = float(behavior_cfg.get("confidence_threshold", 0.82))
 
     from core.cooldown_detector import UniversalCooldownDetector
+    from core.resource_detector import UniversalResourceDetector
     cd_det = UniversalCooldownDetector(profession=profession, spec=spec)
+    res_det = UniversalResourceDetector(profession=profession, spec=spec)
 
     screen_w, screen_h = get_screen_resolution()
     print("\n" + "=" * 60)
@@ -47,7 +49,7 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
     print(f"  - Active Duo: [{profession.upper()} | {spec.upper()}]")
     print(f"  - Screen Resolution: {screen_w}x{screen_h}")
     print(f"  - Target Template: {template_name} (Threshold: {threshold})")
-    print("  - Keys: [S] Snapshot frame to template | [Q] Exit")
+    print("  - Keys: [A] Auto-Detect HUD | [S] Snapshot frame | [R] Reload | [Q] Exit")
     print("=" * 60 + "\n")
 
     monitor = ScreenMonitor(region_cfg)
@@ -57,6 +59,7 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
     cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
     prev_time = time.perf_counter()
+    last_cfg_check = 0.0
     fps = 0.0
 
     try:
@@ -67,6 +70,34 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
             prev_time = now
             if dt > 0:
                 fps = 0.9 * fps + 0.1 * (1.0 / dt)
+
+            # Auto-sync with GUI selection changes in settings.yaml every 400ms
+            if now - last_cfg_check > 0.40:
+                last_cfg_check = now
+                try:
+                    if os.path.exists(full_config_path):
+                        with open(full_config_path, "r") as f:
+                            fresh_cfg = yaml.safe_load(f) or {}
+                        sel = fresh_cfg.get("last_selected", {})
+                        sel_prof = sel.get("profession", profession)
+                        sel_spec = sel.get("elite_spec", spec)
+                        if sel_prof != profession or sel_spec != spec:
+                            profession = sel_prof
+                            spec = sel_spec
+                            cd_det.set_composite(profession, spec)
+                            res_det.configure(profession=profession, spec=spec)
+                            print(f"[HUD] Auto-switched to [{profession} > {spec}] ({len([k for k in cd_det.slots if k.startswith('mech_')])} mechanics)")
+                            try:
+                                cv2.setWindowTitle(window_name, f"Antigrav HUD [{profession} > {spec}] (Press 'Q' to quit)")
+                            except Exception:
+                                pass
+                        # Also auto-sync region if changed in settings.yaml
+                        fresh_reg = fresh_cfg.get("region", {})
+                        if fresh_reg and fresh_reg != monitor.region_config:
+                            monitor.update_roi(fresh_reg)
+                            print(f"[HUD] Auto-synced updated capture region from settings.yaml: {monitor.roi}")
+                except Exception:
+                    pass
 
             # Evaluate template match
             result = detector.match_template(
@@ -89,8 +120,10 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                 box_color = (60, 220, 80) if st.is_ready else (40, 50, 230)
                 cv2.rectangle(display, (sx, sy), (sx + sw, sy + sh), box_color, 2)
 
-                # Context-sensitive mechanic label for the active duo
-                if s_id.startswith("mech_"):
+                # Context-sensitive mechanic label from active spec file or fallback
+                if getattr(cd_det, "slot_labels", None) and s_id in cd_det.slot_labels:
+                    short_name = cd_det.slot_labels[s_id]
+                elif s_id.startswith("mech_"):
                     m_num = s_id.replace("mech_f", "")
                     if "guardian" in profession.lower():
                         v_names = {"1": "V1(M5)", "2": "V2(M4)", "3": "V3(Shift+M5)"}
@@ -100,6 +133,8 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                         short_name = p_names.get(m_num, f"M{m_num}")
                     else:
                         short_name = f"F{m_num}"
+                elif s_id == "weapon_swap":
+                    short_name = "SWAP(~)"
                 else:
                     short_name = s_id.replace("weapon_", "W").replace("utility_", "U").replace("heal", "Heal").replace("elite", "Elite")
 
@@ -120,22 +155,49 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                 status_color = (80, 180, 255)
                 status_text = f"STATE: SEARCHING ({score_info})"
 
-            # Render status bar on bottom
-            cv2.rectangle(display, (0, h - 25), (w, h), (30, 30, 30), -1)
-            cv2.putText(display, status_text, (8, h - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, status_color, 1)
+            # Render resource indicator (e.g. Clones / Blades / Life Force)
+            res_state = res_det.get_resource_state(frame)
+            if res_state.resource_type != "none":
+                crop_bbox = res_state.details.get("crop_bbox")
+                if crop_bbox:
+                    rx, ry, rw, rh = crop_bbox
+                    cv2.rectangle(display, (rx, ry), (rx + rw, ry + rh), (220, 100, 240), 1)
 
-
-            # Render top banner with active duo and mechanic count
+            # Build telemetry strings
             mech_count = len([k for k in slot_statuses.keys() if k.startswith("mech_")])
-            duo_text = f"DUO: [{profession.upper()} | {spec.upper()}] ({mech_count} Mechanics) | FPS: {fps:.0f} | Latency: {monitor.last_latency_ms:.1f}ms"
-            cv2.rectangle(display, (0, 0), (w, 18), (25, 25, 25), -1)
-            cv2.putText(display, duo_text, (8, 13), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 220, 255), 1)
+            res_tag = f" | {res_state.resource_name.upper()}: {int(res_state.current_value)}/{int(res_state.max_value)}" if res_state.resource_type != "none" else ""
+            duo_text = f"DUO: [{profession.upper()} | {spec.upper()}]{res_tag} ({mech_count} Mechanics) | FPS: {fps:.0f} | Latency: {monitor.last_latency_ms:.1f}ms"
 
-            cv2.imshow(window_name, display)
+            # Render onto dedicated outer canvas so the captured game HUD is 100% visible and unclipped
+            header_h = 24
+            footer_h = 24
+            canvas = np.zeros((header_h + h + footer_h, w, 3), dtype=np.uint8)
+
+            # Top Header Bar (dark charcoal background)
+            canvas[0:header_h, :] = (25, 25, 25)
+            cv2.putText(canvas, duo_text, (8, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (120, 220, 255), 1)
+
+            # Game capture frame in the middle (completely unobstructed)
+            canvas[header_h : header_h + h, 0:w] = display
+
+            # Bottom Footer Bar (dark charcoal background)
+            canvas[header_h + h :, :] = (30, 30, 30)
+            cv2.putText(canvas, status_text, (8, header_h + h + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.42, status_color, 1)
+
+            cv2.imshow(window_name, canvas)
 
             key = cv2.waitKey(1) & 0xFF
             if key in [ord("q"), ord("Q"), 27]:  # 27 = ESC
                 break
+            elif key in [ord("a"), ord("A")]:
+                from core.hud_detector import AutoHUDDetector
+                success, msg, bc = AutoHUDDetector.auto_calibrate_and_save(settings_path=full_config_path)
+                print(f"[HUD] Auto-Detect: {msg}")
+                monitor.update_roi(bc)
+                last_cfg_check = 0.0
+            elif key in [ord("r"), ord("R")]:
+                last_cfg_check = 0.0
+                print(f"[HUD] Refreshed [{profession} > {spec}] layout and calibrated slots.")
             elif key in [ord("s"), ord("S")]:
                 out_path = os.path.join(base_dir, "config", "templates", template_name)
                 os.makedirs(os.path.dirname(out_path), exist_ok=True)

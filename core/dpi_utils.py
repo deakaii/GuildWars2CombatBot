@@ -107,3 +107,70 @@ def absolute_to_normalized(
     norm_w = round(abs_w / screen_w, 4)
     norm_h = round(abs_h / screen_h, 4)
     return norm_x, norm_y, norm_w, norm_h
+
+
+def absolute_to_bottom_center(
+    abs_x: int,
+    abs_y: int,
+    abs_w: int,
+    abs_h: int,
+    screen_w: int,
+    screen_h: int
+) -> Dict[str, Any]:
+    """
+    Converts physical pixel bounds into bottom-center anchor parameters.
+    This guarantees zero horizontal drift when moving between 16:9, 16:10, and 21:9 Ultrawide displays.
+    All dimensions scale with vertical display height (screen_h).
+    """
+    box_center_x = abs_x + (abs_w / 2.0)
+    screen_center_x = screen_w / 2.0
+    
+    # Horizontal offset of box center from screen center, scaled by screen_h
+    center_offset_ratio_x = round((box_center_x - screen_center_x) / float(screen_h), 5)
+    
+    # Distance from bottom edge of screen to bottom of box, scaled by screen_h
+    bottom_offset_ratio_y = round((screen_h - (abs_y + abs_h)) / float(screen_h), 5)
+    
+    # Proportions scaled by screen_h
+    width_ratio = round(abs_w / float(screen_h), 5)
+    height_ratio = round(abs_h / float(screen_h), 5)
+    
+    return {
+        "mode": "bottom_center",
+        "center_offset_ratio_x": center_offset_ratio_x,
+        "bottom_offset_ratio_y": bottom_offset_ratio_y,
+        "width_ratio": width_ratio,
+        "height_ratio": height_ratio,
+        "reference_resolution": {"width": screen_w, "height": screen_h}
+    }
+
+
+def bottom_center_to_absolute(
+    center_offset_ratio_x: float,
+    bottom_offset_ratio_y: float,
+    width_ratio: float,
+    height_ratio: float,
+    screen_w: int,
+    screen_h: int
+) -> Tuple[int, int, int, int]:
+    """
+    Calculates physical screen bounds (x, y, w, h) from bottom-center anchor parameters.
+    Works seamlessly across Ultrawide, 16:9, 1080p, 1440p, and 4K displays.
+    """
+    abs_w = max(1, int(round(width_ratio * screen_h)))
+    abs_h = max(1, int(round(height_ratio * screen_h)))
+    
+    screen_center_x = screen_w / 2.0
+    box_center_x = screen_center_x + (center_offset_ratio_x * screen_h)
+    
+    abs_x = max(0, int(round(box_center_x - (abs_w / 2.0))))
+    abs_y = max(0, int(round(screen_h - ((bottom_offset_ratio_y + height_ratio) * screen_h))))
+    
+    # Clamp bounds to screen boundaries
+    if abs_x + abs_w > screen_w:
+        abs_w = max(1, screen_w - abs_x)
+    if abs_y + abs_h > screen_h:
+        abs_h = max(1, screen_h - abs_y)
+        
+    return abs_x, abs_y, abs_w, abs_h
+

@@ -19,7 +19,7 @@ class HudZones:
     ZONES: Dict[str, Tuple[float, float, float, float]] = {
         # x_start, y_start, width, height (percentages of HUD frame)
         "mechanic": (0.05, 0.00, 0.40, 0.55),     # Top-Left: Mech commands / charges / pips / F-skills
-        "weapon_bar": (0.05, 0.55, 0.40, 0.45),   # Bottom-Left: Skills 1, 2, 3, 4, 5
+        "weapon_bar": (0.01, 0.55, 0.44, 0.45),   # Bottom-Left: Weapon Swap (~), Skills 1, 2, 3, 4, 5
         "health_globe": (0.43, 0.25, 0.16, 0.75), # Center: Health orb and endurance bar
         "buff_bar": (0.58, 0.25, 0.40, 0.30),     # Top-Right: Active boons / buff icons
         "utility_bar": (0.58, 0.55, 0.40, 0.45),  # Bottom-Right: Heal (Q), Utilities (E, R, T), Elite

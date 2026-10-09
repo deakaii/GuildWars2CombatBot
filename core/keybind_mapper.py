@@ -45,11 +45,15 @@ class KeybindMapper:
         if k in self.mappings:
             return self.mappings[k].get("user", k)
 
-        # 2. Default key match (e.g. '6' -> 'q', 'f1' -> 'mouse5', '0' -> 'mouse3')
+        # 2. Weapon swap synonyms (~ / ` / swap / weapon_swap)
+        if k in ["~", "`", "swap", "weapon_swap"]:
+            return self.mappings.get("weapon_swap", {}).get("user", "`")
+
+        # 3. Default key match (e.g. '6' -> 'q', 'f1' -> 'mouse5', '0' -> 'mouse3')
         if k in self.default_to_user:
             return self.default_to_user[k]
 
-        # 3. Otherwise return key as-is
+        # 4. Otherwise return key as-is
         return k
 
     def get_description(self, action_or_key: str) -> str:

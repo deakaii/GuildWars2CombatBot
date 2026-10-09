@@ -193,7 +193,16 @@ def test_universal_cooldown_detection():
     assert not status_digit.is_ready, f"Slot with countdown digit flagged as ready: {status_digit}"
     assert status_digit.digit_detected
 
-    print("  [OK] Universal Cooldown Detector successfully discriminates Ready vs Cooldown across sweep & digits.")
+    # 4. Verify weapon_swap slot resolution and readiness evaluation
+    assert detector.resolve_slot_id("~") == "weapon_swap"
+    assert detector.resolve_slot_id("`") == "weapon_swap"
+    assert "weapon_swap" in detector.slots
+    status_swap = detector.evaluate_slot_crop(ready_slot, "weapon_swap")
+    assert status_swap.is_ready
+    status_swap_cd = detector.evaluate_slot_crop(cd_slot, "weapon_swap")
+    assert not status_swap_cd.is_ready
+
+    print("  [OK] Universal Cooldown Detector successfully discriminates Ready vs Cooldown across sweep, digits & weapon swap.")
 
 
 def test_human_eager_skill_cancelling():

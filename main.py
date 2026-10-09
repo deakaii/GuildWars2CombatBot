@@ -61,6 +61,7 @@ def main():
     parser.add_argument("--gui", action="store_true", help="Launch modern graphical control dashboard")
     parser.add_argument("--calibrate", action="store_true", help="Launch interactive visual region calibrator")
     parser.add_argument("--calibrate-bar", action="store_true", help="Launch interactive action bar equidistant grid calibrator")
+    parser.add_argument("--auto-detect-hud", action="store_true", help="Automatically detect GW2 action bar and configure settings.yaml")
     parser.add_argument("--hud", action="store_true", help="Launch live diagnostic HUD window (read-only)")
     parser.add_argument("--profile", default="auto", help="Active character profile ('auto', 'mech', 'charges', 'guardian', etc.)")
     parser.add_argument("--profession", default=None, help="Profession for HUD or engine (e.g. Guardian, Engineer)")
@@ -72,6 +73,11 @@ def main():
     if args.gui:
         from tools.gui_launcher import start_gui
         start_gui()
+        return
+
+    if args.auto_detect_hud:
+        from tools.auto_calibrate_hud import main as run_auto_detect
+        run_auto_detect()
         return
 
     if args.calibrate_bar:

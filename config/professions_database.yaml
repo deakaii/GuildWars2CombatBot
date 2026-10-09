@@ -24,21 +24,147 @@ professions:
   Mesmer:
     elite_specs:
       Chronomancer:
+        has_unique_mechanic_bar: true
+        f_slots_count: 5
+        mechanic_name: Chrono Shatters & Continuum Split
+        mechanic_slots:
+          mech_f1: [0.210, 0.220, 0.052, 0.220]
+          mech_f2: [0.266, 0.220, 0.052, 0.220]
+          mech_f3: [0.322, 0.220, 0.052, 0.220]
+          mech_f4: [0.378, 0.220, 0.052, 0.220]
+          mech_f5: [0.434, 0.220, 0.052, 0.220]
+        resource:
+          type: discrete_pips
+          name: clones
+          max_pips: 3
+          bbox: [0.210, 0.050, 0.170, 0.120]
         builds:
         - name: Power Chronomancer
-          description: Continuum split time dilation burst rotation
+          description: Continuum split time dilation burst rotation with 3-clone Mind Wrack
           has_unique_mechanic_bar: true
+          rotation_type: rigid_loop
+          opener:
+          - name: Phantasmal Berserker (GS 4)
+            key: '4'
+            cast_delay: 0.5
+            cooldown: 15.0
+          - name: Mirror Blade (GS 2)
+            key: '2'
+            cast_delay: 0.5
+            cooldown: 6.0
+          - name: Mind Wrack (F1 - Burst)
+            key: f1
+            cooldown: 6.0
+            min_resource: 3
+            is_instant: true
+          - name: Weapon Swap (`)
+            key: '`'
+            cast_delay: 0.15
+            cooldown: 9.8
+            is_instant: true
+          loop:
+          - name: Phantasmal Swordsman (Sword 5)
+            key: '5'
+            cast_delay: 0.5
+            cooldown: 18.0
+          - name: Blurred Frenzy (Sword 2)
+            key: '2'
+            cast_delay: 1.5
+            cooldown: 10.0
+            cancellable: false
+          - name: Weapon Swap to GS
+            key: '`'
+            cast_delay: 0.15
+            cooldown: 9.8
+            is_instant: true
+          priority_list: []
+          mechanic_skills:
+          - name: Mind Wrack (F1)
+            key: f1
+            priority: 110
+            cooldown: 6.0
+            min_resource: 3
+            is_instant: true
+          - name: Cry of Frustration (F2)
+            key: f2
+            priority: 95
+            cooldown: 15.0
+            min_resource: 2
+            is_instant: true
+          - name: Continuum Split (F5)
+            key: f5
+            priority: 120
+            cooldown: 90.0
+            min_resource: 3
+            is_instant: true
       Mirage:
         builds:
         - name: Condition Mirage
           description: Mirage cloak ambush clone rotation
           has_unique_mechanic_bar: true
       Virtuoso:
+        has_unique_mechanic_bar: true
+        f_slots_count: 5
+        mechanic_name: Bladesongs
+        mechanic_slots:
+          mech_f1: [0.210, 0.220, 0.052, 0.220]
+          mech_f2: [0.266, 0.220, 0.052, 0.220]
+          mech_f3: [0.322, 0.220, 0.052, 0.220]
+          mech_f4: [0.378, 0.220, 0.052, 0.220]
+          mech_f5: [0.434, 0.220, 0.052, 0.220]
+        resource:
+          type: discrete_pips
+          name: blades
+          max_pips: 5
+          bbox: [0.210, 0.060, 0.280, 0.110]
         builds:
         - name: Power Virtuoso
-          description: 5-Dagger / blade song shatter burst
+          description: 5-Dagger / blade song shatter burst with 5-blade Bladesong Harmony
           has_unique_mechanic_bar: true
-          mechanic_type: 5_blade_charges
+          rotation_type: rigid_loop
+          opener:
+          - name: Phantasmal Berserker (GS 4)
+            key: '4'
+            cast_delay: 0.5
+            cooldown: 15.0
+          - name: Mirror Blade (GS 2)
+            key: '2'
+            cast_delay: 0.5
+            cooldown: 6.0
+          - name: Bladesong Harmony (F1 - Full 5 Blades)
+            key: f1
+            cooldown: 5.0
+            min_resource: 5
+            is_instant: true
+          loop:
+          - name: Mirror Blade (GS 2)
+            key: '2'
+            cast_delay: 0.5
+            cooldown: 6.0
+          - name: Phantasmal Berserker (GS 4)
+            key: '4'
+            cast_delay: 0.5
+            cooldown: 15.0
+          priority_list: []
+          mechanic_skills:
+          - name: Bladesong Harmony (F1)
+            key: f1
+            priority: 110
+            cooldown: 5.0
+            min_resource: 5
+            is_instant: true
+          - name: Bladesong Sorrow (F2)
+            key: f2
+            priority: 95
+            cooldown: 10.0
+            min_resource: 3
+            is_instant: true
+          - name: Bladesong Requiem (F5)
+            key: f5
+            priority: 85
+            cooldown: 15.0
+            min_resource: 3
+            is_instant: true
       Troubadour:
         builds:
         - name: Troubadour Build
@@ -84,20 +210,20 @@ professions:
         mechanic_name: Jade Mech Commands
         mechanic_slots:
           mech_f1:
-          - 0.0798
-          - 0.2206
-          - 0.0399
-          - 0.1559
+          - 0.2156
+          - 0.179
+          - 0.048
+          - 0.2533
           mech_f2:
-          - 0.1246
-          - 0.2206
-          - 0.0399
-          - 0.1559
+          - 0.2693
+          - 0.179
+          - 0.048
+          - 0.2533
           mech_f3:
-          - 0.1694
-          - 0.2206
-          - 0.0399
-          - 0.1559
+          - 0.323
+          - 0.179
+          - 0.048
+          - 0.2533
         builds:
         - name: Power Mechanist
           description: High sustained power DPS with Jade Mech command synchronization

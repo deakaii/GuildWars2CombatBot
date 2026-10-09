@@ -14,6 +14,10 @@ from pynput import keyboard
 pydirectinput.PAUSE = 0.01
 pydirectinput.FAILSAFE = True
 
+# Ensure tilde maps to grave accent scan code (0x29) for DirectX games
+if "~" not in pydirectinput.KEYBOARD_MAPPING and "`" in pydirectinput.KEYBOARD_MAPPING:
+    pydirectinput.KEYBOARD_MAPPING["~"] = pydirectinput.KEYBOARD_MAPPING["`"]
+
 
 def is_target_game_focused(allowed_titles=("guild wars 2", "gw2"), allowed_exes=("gw2-64.exe", "gw2.exe")) -> bool:
     """
@@ -199,11 +203,17 @@ class InputController:
 
     def _execute_low_level(self, action_str: str, hold_time: float) -> bool:
         """Executes a single key, mouse button, or modifier combo."""
+        # Standardize tilde to backtick scan code
+        if action_str == "~":
+            action_str = "`"
+
         # Modifier combo (e.g. 'shift+mouse5', 'shift+1')
         if "+" in action_str:
             parts = action_str.split("+")
             modifier = parts[0].strip()
             sub_action = "+".join(parts[1:]).strip()
+            if sub_action == "~":
+                sub_action = "`"
 
             # Press modifier down
             pydirectinput.keyDown(modifier)

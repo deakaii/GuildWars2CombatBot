@@ -40,19 +40,22 @@ class UniversalCooldownDetector:
     # Action bar width: 1024, height: 235-340.
     # We define relative percentage anchors so it adapts to any resolution/aspect ratio.
     NORMALIZED_SLOTS: Dict[str, Tuple[float, float, float, float]] = {
+        # Weapon swap (Immediately left of Weapon 1):
+        "weapon_swap": (0.0066, 0.4521, 0.0526, 0.4795),
+
         # Weapon bar (Bottom-left):
-        "weapon_1": (0.065, 0.580, 0.074, 0.320),
-        "weapon_2": (0.143, 0.580, 0.074, 0.320),
-        "weapon_3": (0.221, 0.580, 0.074, 0.320),
-        "weapon_4": (0.299, 0.580, 0.074, 0.320),
-        "weapon_5": (0.377, 0.580, 0.074, 0.320),
+        "weapon_1": (0.0658, 0.4521, 0.0757, 0.4795),
+        "weapon_2": (0.1480, 0.4521, 0.0757, 0.4795),
+        "weapon_3": (0.2303, 0.4521, 0.0757, 0.4795),
+        "weapon_4": (0.3125, 0.4521, 0.0757, 0.4795),
+        "weapon_5": (0.3947, 0.4521, 0.0757, 0.4795),
 
         # Utility bar (Bottom-right):
-        "heal":      (0.594, 0.580, 0.074, 0.320),  # Q
-        "utility_1": (0.672, 0.580, 0.074, 0.320),  # E
-        "utility_2": (0.750, 0.580, 0.074, 0.320),  # R
-        "utility_3": (0.828, 0.580, 0.074, 0.320),  # T
-        "elite":     (0.906, 0.580, 0.074, 0.320),  # M3
+        "heal":      (0.5724, 0.4521, 0.0757, 0.4795),  # Q
+        "utility_1": (0.6546, 0.4521, 0.0757, 0.4795),  # E
+        "utility_2": (0.7368, 0.4521, 0.0757, 0.4795),  # R
+        "utility_3": (0.8191, 0.4521, 0.0757, 0.4795),  # T
+        "elite":     (0.9013, 0.4521, 0.0757, 0.4795),  # M3
     }
 
     # Built-in archetype fallbacks for explicitly calibrated composite duos ONLY.
@@ -60,20 +63,47 @@ class UniversalCooldownDetector:
     COMPOSITE_MECHANIC_SLOTS: Dict[str, Dict[str, Tuple[float, float, float, float]]] = {
         # Guardian Core: 3 Virtues positioned directly above weapon skills 2, 3, 4
         "guardian_core": {
-            "mech_f1": (0.204, 0.301, 0.055, 0.221),  # Virtue of Justice (M5)
-            "mech_f2": (0.261, 0.301, 0.055, 0.221),  # Virtue of Resolve (M4)
-            "mech_f3": (0.318, 0.301, 0.055, 0.221),  # Virtue of Courage (Shift+M5)
+            "mech_f1": (0.2040, 0.1644, 0.0550, 0.2740),  # Virtue of Justice (M5)
+            "mech_f2": (0.2610, 0.1644, 0.0550, 0.2740),  # Virtue of Resolve (M4)
+            "mech_f3": (0.3180, 0.1644, 0.0550, 0.2740),  # Virtue of Courage (Shift+M5)
         },
         # Engineer Mechanist: 3 Jade Mech commands positioned on the left above weapon skills 1, 2
         "engineer_mechanist": {
-            "mech_f1": (0.065, 0.220, 0.048, 0.210),  # Spark Revolver (M5)
-            "mech_f2": (0.118, 0.220, 0.048, 0.210),  # Core Reactor Shot (M4)
-            "mech_f3": (0.171, 0.220, 0.048, 0.210),  # Jade Mortar (Shift+M5)
+            "mech_f1": (0.0650, 0.1644, 0.0520, 0.2740),  # Spark Revolver (M5)
+            "mech_f2": (0.1220, 0.1644, 0.0520, 0.2740),  # Core Reactor Shot (M4)
+            "mech_f3": (0.1790, 0.1644, 0.0520, 0.2740),  # Jade Mortar (Shift+M5)
+        },
+        # Mesmer Chronomancer: 5 Shatters (F1-F4 Shatters + F5 Continuum Split)
+        "mesmer_chronomancer": {
+            "mech_f1": (0.1500, 0.1644, 0.0580, 0.2740),  # Mind Wrack (M5 / F1)
+            "mech_f2": (0.2120, 0.1644, 0.0580, 0.2740),  # Cry of Frustration (M4 / F2)
+            "mech_f3": (0.2740, 0.1644, 0.0580, 0.2740),  # Diversion (F3)
+            "mech_f4": (0.3360, 0.1644, 0.0580, 0.2740),  # Distortion (F4)
+            "mech_f5": (0.3980, 0.1644, 0.0580, 0.2740),  # Continuum Split (F5)
+        },
+        # Mesmer Virtuoso: 5 Bladesongs (F1-F5)
+        "mesmer_virtuoso": {
+            "mech_f1": (0.0954, 0.1644, 0.0724, 0.2740),  # Bladesong Harmony (M5 / F1)
+            "mech_f2": (0.1711, 0.1644, 0.0724, 0.2740),  # Bladesong Sorrow (M4 / F2)
+            "mech_f3": (0.2467, 0.1644, 0.0724, 0.2740),  # Bladesong Dissonance (F3)
+            "mech_f4": (0.3224, 0.1644, 0.0724, 0.2740),  # Bladesong Distortion (F4)
+            "mech_f5": (0.3980, 0.1644, 0.0724, 0.2740),  # Bladesong Requiem (F5)
+        },
+        # Mesmer Core / Mirage: 4 Shatters (F1-F4)
+        "mesmer_core": {
+            "mech_f1": (0.1800, 0.1562, 0.0580, 0.3438),  # Mind Wrack
+            "mech_f2": (0.2420, 0.1562, 0.0580, 0.3438),  # Cry of Frustration
+            "mech_f3": (0.3040, 0.1562, 0.0580, 0.3438),  # Diversion
+            "mech_f4": (0.3660, 0.1562, 0.0580, 0.3438),  # Distortion
         },
     }
 
     # Aliases for convenience:
     SLOT_ALIASES = {
+        "`": "weapon_swap",
+        "~": "weapon_swap",
+        "swap": "weapon_swap",
+        "weapon_swap": "weapon_swap",
         "1": "weapon_1",
         "2": "weapon_2",
         "3": "weapon_3",
@@ -143,6 +173,9 @@ class UniversalCooldownDetector:
                     cfg = yaml.safe_load(f) or {}
                 custom = cfg.get("calibrated_slots", {})
                 for k, coords in custom.items():
+                    # Preserve profession-specific mechanic slots; don't let flat mech_* keys clobber them
+                    if k.startswith("mech_"):
+                        continue
                     resolved = self.resolve_slot_id(k)
                     self.slots[resolved] = tuple(coords)
         except Exception:
@@ -151,8 +184,8 @@ class UniversalCooldownDetector:
     def set_composite(self, profession: str, spec: str = "") -> None:
         """
         Configures the mechanic slot layout for the active (profession, specialization) composite duo.
-        First attempts to load character-specific coordinates from professions_database.yaml,
-        then falls back to built-in archetype presets.
+        First attempts to load character-specific coordinates from config/specs/{profession}_{spec}.yaml,
+        then falls back to professions_database.yaml or built-in archetype presets.
         Does NOT carry over attributes to other professions/specializations.
         """
         self.profession = profession.lower().strip() if profession else ""
@@ -160,37 +193,27 @@ class UniversalCooldownDetector:
 
         # Always start by clearing any existing mechanic slots so nothing carries over
         self._clear_mech_slots()
+        self.slot_labels = {}
 
         if not self.profession:
             return
 
-        loaded_from_db = False
+        loaded_from_spec = False
         try:
-            import os, yaml
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            db_path = os.path.join(base_dir, "config", "professions_database.yaml")
-            if os.path.exists(db_path):
-                with open(db_path, "r") as f:
-                    db = yaml.safe_load(f) or {}
-                profs = db.get("professions", {})
-                for p_name, p_data in profs.items():
-                    if p_name.lower() in self.profession or self.profession in p_name.lower():
-                        specs = p_data.get("elite_specs", {})
-                        for s_name, s_data in specs.items():
-                            if not self.spec or s_name.lower() in self.spec or self.spec in s_name.lower():
-                                m_slots = s_data.get("mechanic_slots", {})
-                                if m_slots:
-                                    for m_k, coords in m_slots.items():
-                                        self.slots[m_k] = tuple(coords)
-                                    loaded_from_db = True
-                                    break
-                        if loaded_from_db:
-                            break
+            from core.spec_manager import load_spec_config
+            spec_cfg = load_spec_config(self.profession, self.spec)
+            m_bar = spec_cfg.get("mechanic_bar", {})
+            m_slots = m_bar.get("slots", {})
+            if m_slots:
+                for m_k, coords in m_slots.items():
+                    self.slots[m_k] = tuple(coords)
+                self.slot_labels = m_bar.get("labels", {})
+                loaded_from_spec = True
         except Exception:
             pass
 
-        # Built-in archetype fallback ONLY if exact composite match exists
-        if not loaded_from_db:
+        # Built-in archetype fallback ONLY if exact composite match exists and not loaded from spec file
+        if not loaded_from_spec:
             composite_key = f"{self.profession}_{self.spec}".strip("_")
             if composite_key in self.COMPOSITE_MECHANIC_SLOTS:
                 self.slots.update(self.COMPOSITE_MECHANIC_SLOTS[composite_key])
@@ -421,6 +444,8 @@ class UniversalCooldownDetector:
                     label = f"M{m_num}({p_keys.get(m_num, 'F' + m_num)})"
                 else:
                     label = f"F{m_num}"
+            elif s_id == "weapon_swap":
+                label = "SWAP(~)"
             else:
                 label = s_id.replace("weapon_", "W").replace("utility_", "U").replace("heal", "Heal").replace("elite", "Elite")
 

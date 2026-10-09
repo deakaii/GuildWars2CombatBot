@@ -9,7 +9,7 @@ import mss
 import numpy as np
 import cv2
 
-from core.dpi_utils import enable_dpi_awareness, get_screen_resolution, normalized_to_absolute
+from core.dpi_utils import enable_dpi_awareness, get_screen_resolution, normalized_to_absolute, bottom_center_to_absolute
 
 
 class ScreenMonitor:
@@ -30,12 +30,21 @@ class ScreenMonitor:
     def update_roi(self, region_config: Dict[str, Any]) -> None:
         """
         Updates the active bounding box based on configuration.
-        Supports normalized resolution-independent ratios or absolute pixels.
+        Supports:
+        - "bottom_center": Aspect-ratio invariant anchoring across Ultrawide, 16:9, and 16:10.
+        - "normalized": Standard left/top percentage ratios.
+        - "absolute": Raw pixel coordinates.
         """
         self.region_config = region_config
         mode = region_config.get("mode", "normalized")
 
-        if mode == "normalized":
+        if mode == "bottom_center":
+            cx_ratio = float(region_config.get("center_offset_ratio_x", 0.0))
+            by_ratio = float(region_config.get("bottom_offset_ratio_y", 0.0))
+            w_ratio = float(region_config.get("width_ratio", 0.76))
+            h_ratio = float(region_config.get("height_ratio", 0.21))
+            x, y, w, h = bottom_center_to_absolute(cx_ratio, by_ratio, w_ratio, h_ratio, self.screen_w, self.screen_h)
+        elif mode == "normalized":
             nx = float(region_config.get("norm_x", 0.4))
             ny = float(region_config.get("norm_y", 0.75))
             nw = float(region_config.get("norm_w", 0.2))

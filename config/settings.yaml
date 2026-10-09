@@ -12,47 +12,6 @@ behavior_one:
   - 1.25
   scale_steps: 5
   template_filename: trigger_icon.png
-calibrated_slots:
-  mech_f1:
-  - 0.0798
-  - 0.2206
-  - 0.0399
-  - 0.1559
-  mech_f2:
-  - 0.1246
-  - 0.2206
-  - 0.0399
-  - 0.1559
-  mech_f3:
-  - 0.1694
-  - 0.2206
-  - 0.0399
-  - 0.1559
-  weapon_1:
-  - 0.0708
-  - 0.6118
-  - 0.0765
-  - 0.3029
-  weapon_2:
-  - 0.1474
-  - 0.6118
-  - 0.0765
-  - 0.3029
-  weapon_3:
-  - 0.2239
-  - 0.6118
-  - 0.0765
-  - 0.3029
-  weapon_4:
-  - 0.3005
-  - 0.6118
-  - 0.0765
-  - 0.3029
-  weapon_5:
-  - 0.377
-  - 0.6118
-  - 0.0765
-  - 0.3029
 control:
   corner_failsafe: true
   emergency_stop_key: f12
@@ -60,22 +19,18 @@ control:
   start_key: f9
   stop_key: f10
 last_selected:
-  build: Power Mechanist
-  elite_spec: Mechanist
-  profession: Engineer
+  build: Power Virtuoso
+  elite_spec: Virtuoso
+  profession: Mesmer
 region:
-  abs_h: 340
-  abs_w: 1228
-  abs_x: 630
-  abs_y: 1260
-  mode: normalized
-  norm_h: 0.2125
-  norm_w: 0.4795
-  norm_x: 0.2461
-  norm_y: 0.7875
+  mode: bottom_center
+  center_offset_ratio_x: 0.0
+  bottom_offset_ratio_y: 0.00234
+  width_ratio: 0.71028
+  height_ratio: 0.17056
   reference_resolution:
-    height: 1600
-    width: 2560
+    width: 1024
+    height: 428
 stealth:
   cooldown_jitter_ratio: 0.05
   imperfection_behaviors:

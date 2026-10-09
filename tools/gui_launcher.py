@@ -26,8 +26,302 @@ from profiles.profile_core_guardian import ProfileCoreGuardian
 from profiles.profile_charges import ProfileCharges
 from profiles.profile_mech import ProfileMech
 from profiles.configurable_profile import ConfigurableProfile
-from core.rotation_parser import parse_build_rotation, delete_build, load_database
+from core.rotation_parser import (
+    parse_build_rotation,
+    delete_build,
+    load_database,
+    save_build,
+    ingest_llm_payload,
+    STANDARDIZED_LLM_TEMPLATE
+)
 from tools.rotation_editor import RotationEditorDialog
+
+
+class BuildIngestionDialog(tk.Toplevel):
+    """
+    Dedicated Build Ingestion Modal.
+    Allows pasting LLM output (JSON/YAML) with immediate parsing,
+    validation summary breakdown (strict_rotation / priority_loop / hybrid, weapon swaps, etc.),
+    and 1-click database save & activation.
+    """
+    def __init__(
+        self,
+        parent,
+        db_path: str,
+        default_prof: str,
+        default_spec: str,
+        on_save_callback
+    ):
+        super().__init__(parent)
+        self.title("📥 Ingest Rotation from LLM")
+        self.geometry("780x640")
+        self.minsize(620, 500)
+        self.configure(bg="#181825")
+        self.transient(parent)
+        self.grab_set()
+
+        self.db_path = db_path
+        self.default_prof = default_prof
+        self.default_spec = default_spec
+        self.on_save_callback = on_save_callback
+
+        self.parsed_result: Optional[Dict[str, Any]] = None
+
+        self._build_ui()
+        self.center_window(parent)
+
+    def center_window(self, parent):
+        self.update_idletasks()
+        pw = parent.winfo_width()
+        ph = parent.winfo_height()
+        px = parent.winfo_rootx()
+        py = parent.winfo_rooty()
+        w = self.winfo_width()
+        h = self.winfo_height()
+        x = max(0, px + (pw - w) // 2)
+        y = max(0, py + (ph - h) // 2)
+        self.geometry(f"+{x}+{y}")
+
+    def _build_ui(self):
+        container = tk.Frame(self, bg="#181825", padx=16, pady=14)
+        container.pack(fill="both", expand=True)
+
+        # Header
+        hdr = tk.Frame(container, bg="#181825")
+        hdr.pack(fill="x", pady=(0, 6))
+
+        lbl_title = tk.Label(
+            hdr,
+            text="INGEST COMBAT BUILD FROM LLM",
+            font=("Segoe UI", 11, "bold"),
+            fg="#89b4fa",
+            bg="#181825"
+        )
+        lbl_title.pack(side="left")
+
+        btn_copy = tk.Button(
+            hdr,
+            text="📋 Copy LLM Template",
+            font=("Segoe UI", 8, "bold"),
+            bg="#313244",
+            fg="#a6e3a1",
+            activebackground="#45475a",
+            bd=0,
+            padx=10,
+            pady=4,
+            cursor="hand2",
+            command=self._copy_template
+        )
+        btn_copy.pack(side="right")
+
+        lbl_sub = tk.Label(
+            container,
+            text="Paste the JSON or YAML payload returned by ChatGPT, Claude, Gemini, or any LLM. The parser automatically extracts strict rotations, priority loops, hybrid sequences, weapon swaps (~), double-taps, and auto-attack windows.",
+            font=("Segoe UI", 8),
+            fg="#a6adc8",
+            bg="#181825",
+            justify="left",
+            wraplength=720
+        )
+        lbl_sub.pack(anchor="w", pady=(0, 8))
+
+        # Text input
+        txt_frame = tk.Frame(container, bg="#1e1e2e")
+        txt_frame.pack(fill="both", expand=True)
+
+        self.txt_payload = tk.Text(
+            txt_frame,
+            font=("Consolas", 9),
+            bg="#1e1e2e",
+            fg="#cdd6f4",
+            insertbackground="white",
+            bd=0,
+            wrap="none",
+            height=12
+        )
+        sb_v = ttk.Scrollbar(txt_frame, orient="vertical", command=self.txt_payload.yview)
+        sb_h = ttk.Scrollbar(txt_frame, orient="horizontal", command=self.txt_payload.xview)
+        self.txt_payload.configure(yscrollcommand=sb_v.set, xscrollcommand=sb_h.set)
+        sb_v.pack(side="right", fill="y")
+        sb_h.pack(side="bottom", fill="x")
+        self.txt_payload.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Action bar with Parse button
+        parse_bar = tk.Frame(container, bg="#181825")
+        parse_bar.pack(fill="x", pady=(8, 4))
+
+        self.btn_parse = tk.Button(
+            parse_bar,
+            text="✔  Parse & Validate Payload",
+            font=("Segoe UI", 9, "bold"),
+            bg="#89b4fa",
+            fg="#11111b",
+            activebackground="#b4befe",
+            bd=0,
+            padx=14,
+            pady=6,
+            cursor="hand2",
+            command=self._on_parse
+        )
+        self.btn_parse.pack(side="left")
+
+        # Summary preview card
+        self.card_summary = tk.Frame(container, bg="#1e1e2e", bd=1, relief="solid")
+        self.card_summary.pack(fill="x", pady=(6, 8))
+        self.card_summary.pack_forget()
+
+        self.lbl_card_title = tk.Label(
+            self.card_summary,
+            text="VALIDATED ROTATION SUMMARY",
+            font=("Segoe UI", 9, "bold"),
+            fg="#a6e3a1",
+            bg="#1e1e2e"
+        )
+        self.lbl_card_title.pack(anchor="w", padx=12, pady=(8, 4))
+
+        self.lbl_card_details = tk.Label(
+            self.card_summary,
+            text="",
+            font=("Segoe UI", 8),
+            fg="#cdd6f4",
+            bg="#1e1e2e",
+            justify="left",
+            wraplength=720
+        )
+        self.lbl_card_details.pack(anchor="w", padx=12, pady=(0, 8))
+
+        # Bottom buttons
+        footer = tk.Frame(container, bg="#181825")
+        footer.pack(fill="x", side="bottom", pady=(4, 0))
+
+        self.btn_save = tk.Button(
+            footer,
+            text="💾  Save to Database & Activate",
+            font=("Segoe UI", 10, "bold"),
+            bg="#a6e3a1",
+            fg="#11111b",
+            activebackground="#94e2d5",
+            bd=0,
+            padx=16,
+            pady=8,
+            cursor="hand2",
+            command=self._on_save_and_activate,
+            state="disabled"
+        )
+        self.btn_save.pack(side="right", padx=(8, 0))
+
+        self.btn_open_editor = tk.Button(
+            footer,
+            text="✏  Open in Rotation Editor",
+            font=("Segoe UI", 9, "bold"),
+            bg="#313244",
+            fg="#89b4fa",
+            activebackground="#45475a",
+            bd=0,
+            padx=12,
+            pady=8,
+            cursor="hand2",
+            command=self._on_open_editor,
+            state="disabled"
+        )
+        self.btn_open_editor.pack(side="right", padx=(8, 0))
+
+        tk.Button(
+            footer,
+            text="Close",
+            font=("Segoe UI", 9),
+            bg="#313244",
+            fg="#cdd6f4",
+            activebackground="#45475a",
+            bd=0,
+            padx=14,
+            pady=8,
+            cursor="hand2",
+            command=self.destroy
+        ).pack(side="right")
+
+    def _copy_template(self):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(STANDARDIZED_LLM_TEMPLATE)
+            messagebox.showinfo(
+                "Prompt Copied",
+                "Standardized LLM Prompt Template copied to clipboard!\n\nPaste it into ChatGPT, Claude, Gemini, or any LLM along with your rotation guide.",
+                parent=self
+            )
+        except Exception as e:
+            messagebox.showerror("Clipboard Error", f"Failed to copy prompt: {e}", parent=self)
+
+    def _on_parse(self):
+        raw = self.txt_payload.get("1.0", tk.END).strip()
+        if not raw:
+            messagebox.showwarning("Empty Input", "Please paste JSON or YAML rotation text first.", parent=self)
+            return
+
+        try:
+            self.parsed_result = ingest_llm_payload(raw)
+            sm = self.parsed_result["summary"]
+            p_name = self.parsed_result["profession"] or self.default_prof
+            s_name = self.parsed_result["elite_spec"] or self.default_spec
+            r_type = self.parsed_result["rotation_type"].upper()
+
+            details_text = (
+                f"• Build: {self.parsed_result['name']}  |  Profession: {p_name} > {s_name}  |  Type: {r_type}\n"
+                f"• Tracks: Opener: {sm['opener_count']} steps  |  Loop: {sm['loop_count']} steps  |  "
+                f"Priority List: {sm['priority_count']} skills  |  Mechanics: {sm['mechanics_count']} skills\n"
+                f"• Detected Capabilities: {sm['weapon_swaps']} Weapon Swaps (~)  |  "
+                f"{sm['double_taps']} Ground-Target Double-Taps  |  {sm['auto_attacks']} Auto-Attack Windows"
+            )
+
+            self.lbl_card_details.config(text=details_text)
+            self.card_summary.pack(fill="x", pady=(6, 8))
+            self.btn_save.config(state="normal")
+            self.btn_open_editor.config(state="normal")
+
+            messagebox.showinfo("Validation Success", f"Successfully parsed '{self.parsed_result['name']}' ({r_type}) with {sm['total_actions']} total actions!", parent=self)
+
+        except Exception as e:
+            self.card_summary.pack_forget()
+            self.btn_save.config(state="disabled")
+            self.btn_open_editor.config(state="disabled")
+            messagebox.showerror("Parsing Failure", f"Failed to parse rotation payload:\n\n{e}", parent=self)
+
+    def _on_save_and_activate(self):
+        if not self.parsed_result:
+            return
+        b_data = self.parsed_result["build_data"]
+        prof = self.parsed_result["profession"] or self.default_prof
+        spec = self.parsed_result["elite_spec"] or self.default_spec
+
+        if not prof or not spec:
+            messagebox.showwarning("Missing Profession/Spec", "Please specify Profession and Elite Specialization before saving.", parent=self)
+            return
+
+        try:
+            success = save_build(self.db_path, prof, spec, b_data)
+            if success:
+                self.on_save_callback(prof, spec, b_data)
+                self.destroy()
+            else:
+                messagebox.showerror("Save Error", f"Failed to save build to {self.db_path}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Save Error", f"Failed to save build: {e}", parent=self)
+
+    def _on_open_editor(self):
+        if not self.parsed_result:
+            return
+        b_data = self.parsed_result["build_data"]
+        prof = self.parsed_result["profession"] or self.default_prof
+        spec = self.parsed_result["elite_spec"] or self.default_spec
+        self.destroy()
+        RotationEditorDialog(
+            self.master,
+            self.db_path,
+            prof,
+            spec,
+            build_data=b_data,
+            on_save_callback=self.on_save_callback
+        )
 
 
 class ModernBotGUI:
@@ -42,6 +336,7 @@ class ModernBotGUI:
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.db_path = os.path.join(self.base_dir, "config", "professions_database.yaml")
         self.settings_path = os.path.join(self.base_dir, "config", "settings.yaml")
+        self.config_path = self.settings_path
 
         self.db = self._load_yaml(self.db_path)
         self.settings = self._load_yaml(self.settings_path)
@@ -196,7 +491,7 @@ class ModernBotGUI:
         lbl_rot = tk.Label(header_rot, text="ACTIVE ROTATION HIERARCHY", font=("Segoe UI", 10, "bold"), fg="#89b4fa", bg="#1e1e2e")
         lbl_rot.pack(side="left")
 
-        # Action Buttons: ➕ New, ✏ Edit, 🗑 Delete
+        # Action Buttons: 📋 Copy Template, 📥 Ingest, ➕ New, ✏ Edit, 🗑 Delete
         self.btn_del_rot = tk.Button(
             header_rot,
             text="🗑 Delete",
@@ -205,12 +500,12 @@ class ModernBotGUI:
             fg="#f38ba8",
             activebackground="#45475a",
             bd=0,
-            padx=8,
+            padx=7,
             pady=3,
             cursor="hand2",
             command=self.delete_selected_rotation
         )
-        self.btn_del_rot.pack(side="right", padx=(4, 0))
+        self.btn_del_rot.pack(side="right", padx=(3, 0))
 
         self.btn_edit_rot = tk.Button(
             header_rot,
@@ -220,12 +515,12 @@ class ModernBotGUI:
             fg="#a6e3a1",
             activebackground="#45475a",
             bd=0,
-            padx=8,
+            padx=7,
             pady=3,
             cursor="hand2",
             command=self.launch_edit_rotation
         )
-        self.btn_edit_rot.pack(side="right", padx=(4, 0))
+        self.btn_edit_rot.pack(side="right", padx=(3, 0))
 
         self.btn_new_rot = tk.Button(
             header_rot,
@@ -235,12 +530,42 @@ class ModernBotGUI:
             fg="#89b4fa",
             activebackground="#45475a",
             bd=0,
-            padx=8,
+            padx=7,
             pady=3,
             cursor="hand2",
             command=self.launch_new_rotation
         )
-        self.btn_new_rot.pack(side="right")
+        self.btn_new_rot.pack(side="right", padx=(3, 0))
+
+        self.btn_ingest = tk.Button(
+            header_rot,
+            text="📥 Ingest",
+            font=("Segoe UI", 8, "bold"),
+            bg="#313244",
+            fg="#f9e2af",
+            activebackground="#45475a",
+            bd=0,
+            padx=7,
+            pady=3,
+            cursor="hand2",
+            command=self.launch_ingest_rotation
+        )
+        self.btn_ingest.pack(side="right", padx=(3, 0))
+
+        self.btn_copy_template = tk.Button(
+            header_rot,
+            text="📋 Copy Template",
+            font=("Segoe UI", 8, "bold"),
+            bg="#313244",
+            fg="#94e2d5",
+            activebackground="#45475a",
+            bd=0,
+            padx=7,
+            pady=3,
+            cursor="hand2",
+            command=self.copy_llm_template
+        )
+        self.btn_copy_template.pack(side="right")
 
         # Partitioned Notebook Preview: Opener, Loop, Priority List, Mechanics
         self.rot_notebook = ttk.Notebook(left_panel, style="Dark.TNotebook")
@@ -379,6 +704,21 @@ class ModernBotGUI:
         self.btn_reset.pack(fill="x", padx=14, pady=4)
 
         # Quick Utility Buttons
+        btn_autodetect = tk.Button(
+            right_panel,
+            text="⚡  Auto-Detect HUD Bounds",
+            font=("Segoe UI", 9, "bold"),
+            bg="#89b4fa",
+            fg="#11111b",
+            activebackground="#b4befe",
+            bd=0,
+            padx=10,
+            pady=7,
+            cursor="hand2",
+            command=self.auto_detect_hud
+        )
+        btn_autodetect.pack(fill="x", padx=14, pady=(12, 4))
+
         btn_hud = tk.Button(
             right_panel,
             text="👁  Open Live HUD Preview",
@@ -392,7 +732,7 @@ class ModernBotGUI:
             cursor="hand2",
             command=self.launch_hud
         )
-        btn_hud.pack(fill="x", padx=14, pady=(12, 4))
+        btn_hud.pack(fill="x", padx=14, pady=4)
 
         btn_bar_calib = tk.Button(
             right_panel,
@@ -534,20 +874,27 @@ class ModernBotGUI:
         # Parse standardized rotation components
         parsed = parse_build_rotation(target_build)
 
+        def fmt_key(act):
+            if act.key in ["~", "`"] or "weapon swap" in act.name.lower():
+                return "Swap (~)"
+            return act.key
+
         # 1. Opener
         for i, act in enumerate(parsed["opener"], start=1):
             flags = []
+            if act.key in ["~", "`"] or "weapon swap" in act.name.lower(): flags.append("Swap (~)")
             if act.double_tap: flags.append("Double-Tap")
             if not act.cancellable: flags.append("No-Cancel")
-            self.tree_opener.insert("", tk.END, values=(f"#{i}", act.name, act.key, f"{act.cast_delay}s", ", ".join(flags) if flags else "-"))
+            self.tree_opener.insert("", tk.END, values=(f"#{i}", act.name, fmt_key(act), f"{act.cast_delay}s", ", ".join(flags) if flags else "-"))
 
         # 2. Loop
         for i, act in enumerate(parsed["loop"], start=1):
             flags = []
+            if act.key in ["~", "`"] or "weapon swap" in act.name.lower(): flags.append("Swap (~)")
             if act.is_auto_attack: flags.append("Auto-Attack")
             if act.double_tap: flags.append("Double-Tap")
-            if act.is_instant: flags.append("Instant")
-            self.tree_loop.insert("", tk.END, values=(f"#{i}", act.name, act.key, f"{act.cast_delay}s", ", ".join(flags) if flags else "-"))
+            if act.is_instant and "Swap (~)" not in flags: flags.append("Instant")
+            self.tree_loop.insert("", tk.END, values=(f"#{i}", act.name, fmt_key(act), f"{act.cast_delay}s", ", ".join(flags) if flags else "-"))
 
         # 3. Priority List
         for act in sorted(parsed["priority_list"], key=lambda x: x.priority, reverse=True):
@@ -599,6 +946,32 @@ class ModernBotGUI:
             for b in profile.behaviors:
                 self.active_engine.register_behavior(b)
             self.log_message(f"Active rotation engine updated to [{profile.name}]. Ready for [F9]!")
+
+    def copy_llm_template(self):
+        """Copies the standardized LLM prompt template to the clipboard."""
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(STANDARDIZED_LLM_TEMPLATE)
+            self.log_message("Copied Standardized LLM Prompt Template to clipboard!")
+            messagebox.showinfo(
+                "Template Copied",
+                "Standardized LLM Prompt Template copied to clipboard!\n\nPaste it into ChatGPT, Claude, Gemini, or any LLM along with your rotation guide.",
+                parent=self.root
+            )
+        except Exception as e:
+            messagebox.showerror("Clipboard Error", f"Failed to copy template: {e}", parent=self.root)
+
+    def launch_ingest_rotation(self):
+        """Launches the dedicated LLM build ingestion dialog."""
+        prof = self.cb_profession.get()
+        spec = self.cb_elitespec.get()
+        BuildIngestionDialog(
+            self.root,
+            self.db_path,
+            default_prof=prof,
+            default_spec=spec,
+            on_save_callback=self._on_rotation_saved
+        )
 
     def launch_new_rotation(self):
         """Launches the interactive rotation editor to create a new rotation for the active spec."""
@@ -823,6 +1196,34 @@ class ModernBotGUI:
             self.log_message(f"[Error in Engine]: {e}")
         finally:
             self.root.after(0, self._update_status_standby)
+
+    def auto_detect_hud(self):
+        """Automatically scans the display, locates the GW2 health orb, and sets the tight HUD region."""
+        try:
+            from core.hud_detector import AutoHUDDetector
+            from core.dpi_utils import get_screen_resolution, bottom_center_to_absolute
+            screen_w, screen_h = get_screen_resolution()
+            success, msg, bc = AutoHUDDetector.auto_calibrate_and_save(settings_path=self.settings_path)
+
+            self.settings = self._load_yaml(self.settings_path)
+            if self.active_engine and hasattr(self.active_engine, "monitor") and self.active_engine.monitor:
+                self.active_engine.monitor.update_roi(bc)
+
+            rx, ry, rw, rh = bottom_center_to_absolute(
+                bc["center_offset_ratio_x"],
+                bc["bottom_offset_ratio_y"],
+                bc["width_ratio"],
+                bc["height_ratio"],
+                screen_w,
+                screen_h
+            )
+            self.log_message(f"[Auto-Detect HUD] {msg} Screen ROI: [{rx}, {ry}, {rw}x{rh}]")
+            title = "HUD Auto-Detection Success" if success else "Auto-Detection Notice"
+            info = f"{msg}\n\nCalibrated Screen ROI: [{rx}, {ry}, {rw}x{rh}]\nScreen: {screen_w}x{screen_h}\nMode: bottom_center (Aspect-Ratio Invariant)"
+            messagebox.showinfo(title, info, parent=self.root)
+        except Exception as e:
+            self.log_message(f"[Auto-Detect HUD Error]: {e}")
+            messagebox.showerror("Auto-Detection Error", f"Failed to run auto-detection: {e}", parent=self.root)
 
     def launch_hud(self):
         """Launches the read-only live preview HUD in a separate process with active duo coordinates."""

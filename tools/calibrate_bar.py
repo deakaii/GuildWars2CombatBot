@@ -17,7 +17,7 @@ from typing import List, Tuple, Dict, Any, Optional
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from core.dpi_utils import enable_dpi_awareness, get_screen_resolution, absolute_to_normalized
+from core.dpi_utils import enable_dpi_awareness, get_screen_resolution, absolute_to_normalized, absolute_to_bottom_center
 
 
 class BarGridCalibrator:
@@ -26,6 +26,14 @@ class BarGridCalibrator:
     """
 
     PRESETS = {
+        "weapon_swap": {
+            "name": "Weapon Swap Icon (~ / `) (1 slot)",
+            "count": 1,
+            "keys": ["weapon_swap"],
+            "labels": ["Weapon Swap (~)"],
+            "badges": ["Swap (~)"],
+            "is_mechanic": False
+        },
         "weapon": {
             "name": "Weapon Skills 1 - 5 (5 slots)",
             "count": 5,
@@ -33,6 +41,22 @@ class BarGridCalibrator:
             "labels": ["Skill 1", "Skill 2", "Skill 3", "Skill 4", "Skill 5"],
             "badges": ["1", "2", "3", "4", "5"],
             "is_mechanic": False
+        },
+        "mechanic_5": {
+            "name": "Mechanic Bar F1 - F5 (5 slots: Chrono, Virtuoso, Scourge)",
+            "count": 5,
+            "keys": ["mech_f1", "mech_f2", "mech_f3", "mech_f4", "mech_f5"],
+            "labels": ["Mech F1", "Mech F2", "Mech F3", "Mech F4", "Mech F5"],
+            "badges": ["F1", "F2", "F3", "F4", "F5"],
+            "is_mechanic": True
+        },
+        "mechanic_4": {
+            "name": "Mechanic Bar F1 - F4 (4 slots: Ele Attunements, Core Mesmer)",
+            "count": 4,
+            "keys": ["mech_f1", "mech_f2", "mech_f3", "mech_f4"],
+            "labels": ["Mech F1", "Mech F2", "Mech F3", "Mech F4"],
+            "badges": ["F1", "F2", "F3", "F4"],
+            "is_mechanic": True
         },
         "mechanic_virtues": {
             "name": "Guardian Virtues F1 - F3 / M5, M4 (3 slots)",
@@ -49,6 +73,38 @@ class BarGridCalibrator:
             "labels": ["Mech F1 (M5)", "Mech F2 (M4)", "Mech F3 (Shift+M5)"],
             "badges": ["M1 (M5)", "M2 (M4)", "M3 (Shift+M5)"],
             "is_mechanic": True
+        },
+        "pips_3": {
+            "name": "Resource Pips (3 pips: Chronomancer Clones, Warrior Adrenaline)",
+            "count": 3,
+            "keys": ["pip_1", "pip_2", "pip_3"],
+            "labels": ["Pip 1", "Pip 2", "Pip 3"],
+            "badges": ["Pip 1", "Pip 2", "Pip 3"],
+            "is_mechanic": False,
+            "is_resource": True,
+            "resource_type": "discrete_pips",
+            "max_pips": 3
+        },
+        "pips_5": {
+            "name": "Resource Pips (5 pips: Virtuoso Blades, Deadeye Malice)",
+            "count": 5,
+            "keys": ["pip_1", "pip_2", "pip_3", "pip_4", "pip_5"],
+            "labels": ["Pip 1", "Pip 2", "Pip 3", "Pip 4", "Pip 5"],
+            "badges": ["Pip 1", "Pip 2", "Pip 3", "Pip 4", "Pip 5"],
+            "is_mechanic": False,
+            "is_resource": True,
+            "resource_type": "discrete_pips",
+            "max_pips": 5
+        },
+        "gauge_bar": {
+            "name": "Resource Gauge (Fill Bar: Necro Life Force, Revenant Energy)",
+            "count": 1,
+            "keys": ["resource_gauge"],
+            "labels": ["Resource Gauge"],
+            "badges": ["Gauge"],
+            "is_mechanic": False,
+            "is_resource": True,
+            "resource_type": "continuous_gauge"
         },
         "utility": {
             "name": "Utility Bar Q - Elite M3 (5 slots)",
@@ -517,8 +573,10 @@ class BarGridCalibrator:
             hud_w = new_hud_r - new_hud_x
             hud_h = new_hud_b - new_hud_y
 
-            # Update settings region
+            # Update settings region with normalized and bottom-center anchor parameters
             nx, ny, nw, nh = absolute_to_normalized(hud_x, hud_y, hud_w, hud_h, self.screen_w, self.screen_h)
+            bc_params = absolute_to_bottom_center(hud_x, hud_y, hud_w, hud_h, self.screen_w, self.screen_h)
+            region.update(bc_params)
             region["abs_x"] = hud_x
             region["abs_y"] = hud_y
             region["abs_w"] = hud_w
@@ -529,13 +587,47 @@ class BarGridCalibrator:
             region["norm_h"] = nh
             region["reference_resolution"] = {"width": self.screen_w, "height": self.screen_h}
             settings["region"] = region
-            print(f"[BarCalibrator] Auto-expanded HUD Region to enclose bar: {hud_w}x{hud_h} at ({hud_x}, {hud_y})")
+            print(f"[BarCalibrator] Auto-expanded HUD Region to enclose bar: {hud_w}x{hud_h} at ({hud_x}, {hud_y}) [Bottom-Center Anchored]")
 
         if "calibrated_slots" not in settings:
             settings["calibrated_slots"] = {}
 
-        is_mech = self.PRESETS.get(self.selected_preset_key, {}).get("is_mechanic", False)
+        preset_info = self.PRESETS.get(self.selected_preset_key, {})
+        is_mech = preset_info.get("is_mechanic", False)
+        is_res = preset_info.get("is_resource", False)
         mech_coords: Dict[str, List[float]] = {}
+
+        # Handle resource calibration (e.g. 3 or 5 pips or gauge bar)
+        if is_res:
+            if "calibrated_resources" not in settings:
+                settings["calibrated_resources"] = {}
+            res_type = preset_info.get("resource_type", "discrete_pips")
+            rel_bx = round((bx - hud_x) / float(hud_w), 4)
+            rel_by = round((by - hud_y) / float(hud_h), 4)
+            rel_bw = round(bw / float(hud_w), 4)
+            rel_bh = round(bh / float(hud_h), 4)
+            res_bbox = [rel_bx, rel_by, rel_bw, rel_bh]
+            settings["calibrated_resources"][res_type] = res_bbox
+
+            # Persist to active spec in professions_database.yaml
+            if os.path.exists(self.db_path):
+                try:
+                    with open(self.db_path, "r") as f:
+                        db = yaml.safe_load(f) or {}
+                    last_prof = settings.get("last_selected", {}).get("profession", "Mesmer")
+                    last_spec = settings.get("last_selected", {}).get("elite_spec", "Chronomancer")
+                    spec_entry = db.get("professions", {}).get(last_prof, {}).get("elite_specs", {}).get(last_spec, {})
+                    if spec_entry:
+                        res_dict = spec_entry.setdefault("resource", {})
+                        res_dict["type"] = res_type
+                        res_dict["bbox"] = res_bbox
+                        if "max_pips" in preset_info:
+                            res_dict["max_pips"] = preset_info["max_pips"]
+                        with open(self.db_path, "w") as f:
+                            yaml.safe_dump(db, f, default_flow_style=False, sort_keys=False)
+                        print(f"[BarCalibrator] Updated resource bbox for [{last_prof} > {last_spec}] in {self.db_path}")
+                except Exception as e:
+                    print(f"[BarCalibrator] Note: Could not update resource bbox in database YAML: {e}")
 
         saved_keys = []
         for slot in self.current_slots:

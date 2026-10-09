@@ -1,0 +1,34 @@
+# ==============================================================================
+# Specialization Layout & Resource Definition
+# Profession: Mesmer
+# Specialization: Chronomancer
+# ==============================================================================
+
+profession: Mesmer
+elite_spec: Chronomancer
+display_name: "Mesmer - Chronomancer"
+description: "5 Shatters (F1-F4 + F5 Continuum Split) and 3 Clone Pips"
+
+mechanic_bar:
+  f_slots_count: 5
+  slots:
+    mech_f1: [0.1500, 0.1644, 0.0580, 0.2740]  # Mind Wrack (M5 / F1)
+    mech_f2: [0.2120, 0.1644, 0.0580, 0.2740]  # Cry of Frustration (M4 / F2)
+    mech_f3: [0.2740, 0.1644, 0.0580, 0.2740]  # Diversion (Shift+M5 / F3)
+    mech_f4: [0.3360, 0.1644, 0.0580, 0.2740]  # Distortion (Shift+M4 / F4)
+    mech_f5: [0.3980, 0.1644, 0.0580, 0.2740]  # Continuum Split (F5)
+  labels:
+    mech_f1: "F1:Wrack"
+    mech_f2: "F2:Cry"
+    mech_f3: "F3:Divers"
+    mech_f4: "F4:Distort"
+    mech_f5: "F5:Split"
+
+resource:
+  type: discrete_pips
+  name: clones
+  max_pips: 3
+  bbox: [0.1800, 0.1096, 0.1200, 0.1096]  # 3 circular clone glyphs
+  color_preset: purple_clones
+  brightness_threshold: 75.0
+  saturation_threshold: 35.0

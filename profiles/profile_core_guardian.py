@@ -114,8 +114,10 @@ class CoreGuardianRotationBehavior(BaseBehavior):
         def is_action_ready_filter(act: RotationAction) -> bool:
             if act.is_auto_attack:
                 return True
-            if act.key == "`":
-                # Weapon swap: check if weapon swap internal cooldown has passed
+            if act.key in ["`", "~"]:
+                if frame is not None and frame.size > 0:
+                    if not self.cooldown_detector.is_slot_ready(frame, "weapon_swap"):
+                        return False
                 return (now - self.last_weapon_swap_time) >= self.weapon_swap_cooldown
             if frame is None or frame.size == 0:
                 return True

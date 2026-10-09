@@ -1,0 +1,29 @@
+profession: Guardian
+elite_spec: Luminary
+display_name: Guardian - Luminary
+description: Luminary Specialization Layout
+mechanic_bar:
+  f_slots_count: 3
+  slots:
+    mech_f1:
+    - 0.204
+    - 0.1562
+    - 0.055
+    - 0.3438
+    mech_f2:
+    - 0.261
+    - 0.1562
+    - 0.055
+    - 0.3438
+    mech_f3:
+    - 0.318
+    - 0.1562
+    - 0.055
+    - 0.3438
+  labels:
+    mech_f1: F1
+    mech_f2: F2
+    mech_f3: F3
+resource:
+  type: none
+  name: none

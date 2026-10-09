@@ -20,8 +20,11 @@ from core.rotation_parser import (
     save_database,
     save_build,
     delete_build,
-    create_database_backup
+    create_database_backup,
+    ingest_llm_payload
 )
+from core.keybind_mapper import KeybindMapper
+import pydirectinput
 from profiles.configurable_profile import ConfigurableProfile, ConfigurableRotationBehavior
 from core.rotation_framework import RotationPhase, RotationAction
 from core.detector import VisualDetector
@@ -244,6 +247,117 @@ def test_rigid_loop_configurable_profile():
     print("  [OK] Rigid Loop sequential execution and auto-attack yielding verified.")
 
 
+def test_weapon_swap_serialization_and_keybinds():
+    print("[TEST 6/7] Weapon Swap Serialization & DirectInput Keycode Mappings...")
+    swap_act = RotationAction(
+        name="Weapon Swap (~)",
+        key="~",
+        cooldown=9.8,
+        cast_delay=0.15,
+        is_instant=True
+    )
+    d = action_to_dict(swap_act)
+    restored = dict_to_action(d)
+
+    assert restored.name == "Weapon Swap (~)"
+    assert restored.key == "~"
+    assert restored.is_instant is True
+    assert restored.cooldown == 9.8
+
+    # Keybind translation test
+    mapper = KeybindMapper()
+    assert mapper.translate("~") == "`"
+    assert mapper.translate("weapon_swap") == "`"
+    assert mapper.translate("swap") == "`"
+
+    # DirectInput mapping test
+    assert pydirectinput.KEYBOARD_MAPPING.get("~") == 0x29
+    assert pydirectinput.KEYBOARD_MAPPING.get("`") == 0x29
+    print("  [OK] Weapon swap action serialization and DirectInput scan code 0x29 verified.")
+
+
+def test_llm_ingestion_pipeline():
+    print("[TEST 7/7] Standardized LLM Payload Ingestion & Multi-Archetype Extraction...")
+
+    # Case 1: strict_rotation enclosed in markdown ```json ... ```
+    llm_payload_strict = """Here is the strict rotation for Guardian Greatsword:
+```json
+{
+  "name": "GS Strict Burst",
+  "profession": "Guardian",
+  "elite_spec": "Core",
+  "description": "Strict Greatsword and Sword loop",
+  "rotation_type": "strict_rotation",
+  "opener": [
+    { "name": "Shield of Wrath", "key": "5", "cooldown": 35.0, "cast_delay": 0.5 },
+    { "name": "Weapon Swap to GS", "key": "~", "cooldown": 9.8, "cast_delay": 0.15 }
+  ],
+  "loop": [
+    { "name": "Whirling Wrath", "key": "2", "cooldown": 8.0, "cast_delay": 1.5, "cancellable": false },
+    { "name": "GS Auto-Attacks", "key": "1", "cast_delay": 2.2, "is_auto_attack": true },
+    { "name": "Weapon Swap to Sword", "key": "`", "cooldown": 9.8, "cast_delay": 0.15 }
+  ],
+  "mechanic_skills": [
+    { "name": "Virtue of Justice", "key": "f1", "priority": 100, "is_instant": true }
+  ]
+}
+```
+Hope this helps your build!
+"""
+    result_strict = ingest_llm_payload(llm_payload_strict)
+    assert result_strict["name"] == "GS Strict Burst"
+    assert result_strict["rotation_type"] == "rigid_loop"
+    assert result_strict["summary"]["opener_count"] == 2
+    assert result_strict["summary"]["loop_count"] == 3
+    assert result_strict["summary"]["weapon_swaps"] == 2
+    assert result_strict["summary"]["auto_attacks"] == 1
+
+    # Case 2: priority_loop with conversational intro
+    llm_payload_priority = """
+I converted the rotation into a priority loop:
+{
+  "name": "Mechanist Priority",
+  "profession": "Engineer",
+  "elite_spec": "Mechanist",
+  "rotation_type": "priority_loop",
+  "priority_list": [
+    { "name": "Blunderbuss", "key": "2", "priority": 90, "cooldown": 8.0 },
+    { "name": "Net Shot", "key": "3", "priority": 80, "cooldown": 8.0 },
+    { "name": "Jump Shot", "key": "5", "priority": 70, "cooldown": 18.0, "double_tap": true }
+  ],
+  "mechanic_skills": [
+    { "name": "Core Reactor Shot", "key": "f2", "priority": 95, "is_instant": true }
+  ]
+}
+"""
+    result_prio = ingest_llm_payload(llm_payload_priority)
+    assert result_prio["name"] == "Mechanist Priority"
+    assert result_prio["rotation_type"] == "priority_list"
+    assert result_prio["summary"]["priority_count"] == 3
+    assert result_prio["summary"]["double_taps"] == 1
+
+    # Case 3: hybrid rotation
+    llm_payload_hybrid = """
+{
+  "name": "Hybrid Burst",
+  "rotation_type": "hybrid",
+  "opener": [
+    { "name": "Opener Skill", "key": "3", "cast_delay": 0.5 }
+  ],
+  "priority_list": [
+    { "name": "Priority Skill", "key": "2", "priority": 90 }
+  ]
+}
+"""
+    result_hybrid = ingest_llm_payload(llm_payload_hybrid)
+    assert result_hybrid["name"] == "Hybrid Burst"
+    assert result_hybrid["rotation_type"] == "hybrid"
+    assert result_hybrid["summary"]["opener_count"] == 1
+    assert result_hybrid["summary"]["priority_count"] == 1
+
+    print("  [OK] Markdown fence stripping, conversational isolation, and multi-archetype parsing verified.")
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  RUNNING ROTATION PARSER & CONFIGURABLE PROFILE TESTS")
@@ -254,7 +368,9 @@ if __name__ == "__main__":
     test_database_crud_and_automated_backups()
     test_configurable_profile_execution()
     test_rigid_loop_configurable_profile()
+    test_weapon_swap_serialization_and_keybinds()
+    test_llm_ingestion_pipeline()
 
     print("\n" + "=" * 60)
-    print("  ALL 5 ROTATION PARSER TESTS PASSED! [100% OK]")
+    print("  ALL 7 ROTATION PARSER & INGESTION TESTS PASSED! [100% OK]")
     print("=" * 60 + "\n")
