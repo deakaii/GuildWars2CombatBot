@@ -1,0 +1,109 @@
+behavior_one:
+  condition_type: template
+  confidence_threshold: 0.82
+  cooldown: 3.0
+  enabled: true
+  key_to_press: '1'
+  multi_scale: true
+  name: Action1_VisualTrigger
+  priority: 100
+  scale_range:
+  - 0.8
+  - 1.25
+  scale_steps: 5
+  template_filename: trigger_icon.png
+calibrated_slots:
+  mech_f1:
+  - 0.0798
+  - 0.2206
+  - 0.0399
+  - 0.1559
+  mech_f2:
+  - 0.1246
+  - 0.2206
+  - 0.0399
+  - 0.1559
+  mech_f3:
+  - 0.1694
+  - 0.2206
+  - 0.0399
+  - 0.1559
+  weapon_1:
+  - 0.0708
+  - 0.6118
+  - 0.0765
+  - 0.3029
+  weapon_2:
+  - 0.1474
+  - 0.6118
+  - 0.0765
+  - 0.3029
+  weapon_3:
+  - 0.2239
+  - 0.6118
+  - 0.0765
+  - 0.3029
+  weapon_4:
+  - 0.3005
+  - 0.6118
+  - 0.0765
+  - 0.3029
+  weapon_5:
+  - 0.377
+  - 0.6118
+  - 0.0765
+  - 0.3029
+control:
+  corner_failsafe: true
+  emergency_stop_key: f12
+  require_game_focus: true
+  start_key: f9
+  stop_key: f10
+last_selected:
+  build: Power Mechanist
+  elite_spec: Mechanist
+  profession: Engineer
+region:
+  abs_h: 340
+  abs_w: 1228
+  abs_x: 630
+  abs_y: 1260
+  mode: normalized
+  norm_h: 0.2125
+  norm_w: 0.4795
+  norm_x: 0.2461
+  norm_y: 0.7875
+  reference_resolution:
+    height: 1600
+    width: 2560
+stealth:
+  cooldown_jitter_ratio: 0.05
+  imperfection_behaviors:
+    enabled: true
+    fat_finger_probability: 0.35
+    hesitation_probability: 0.25
+    premature_cancel_probability: 0.15
+    re_press_probability: 0.4
+  key_hold_range:
+  - 0.052
+  - 0.088
+  modifier_post_delay_range:
+  - 0.012
+  - 0.036
+  modifier_pre_delay_range:
+  - 0.018
+  - 0.048
+  reaction_jitter_range:
+  - 0.03
+  - 0.075
+  rotation_effectiveness: 0.85
+target_guard:
+  confidence_threshold: 0.78
+  enabled: true
+  missing_target_tolerance_ticks: 2
+  template_filename: target_indicator.png
+timing:
+  tick_interval: 0.25
+  tick_jitter_range:
+  - 0.015
+  - 0.04

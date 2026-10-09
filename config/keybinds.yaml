@@ -1,0 +1,108 @@
+# Keybind Translation Mapping: Default Game Keybinds -> User's Custom Keybinds
+
+keybind_mapping:
+  # Weapon Skills
+  weapon_swap:
+    default: "`"
+    user: "`"
+    type: "key"
+
+  weapon_1:
+    default: "1"
+    user: "1"
+    type: "key"
+
+  weapon_2:
+    default: "2"
+    user: "2"
+    type: "key"
+
+  weapon_3:
+    default: "3"
+    user: "3"
+    type: "key"
+
+  weapon_4:
+    default: "4"
+    user: "4"
+    type: "key"
+
+  weapon_5:
+    default: "5"
+    user: "5"
+    type: "key"
+
+  # Healing & Utilities
+  heal:
+    default: "6"
+    user: "q"
+    type: "key"
+
+  utility_1:
+    default: "7"
+    user: "e"
+    type: "key"
+
+  utility_2:
+    default: "8"
+    user: "r"
+    type: "key"
+
+  utility_3:
+    default: "9"
+    user: "t"
+    type: "key"
+
+  elite:
+    default: "0"
+    user: "mouse3"
+    type: "mouse"
+    description: "Mouse 3 (Middle Click)"
+
+  # Profession / Class Mechanic Skills
+  profession_1:
+    default: "f1"
+    user: "mouse5"
+    type: "mouse"
+    description: "Mouse 5 (Forward Side Button)"
+
+  profession_2:
+    default: "f2"
+    user: "mouse4"
+    type: "mouse"
+    description: "Mouse 4 (Back Side Button)"
+
+  profession_3:
+    default: "f3"
+    user: "shift+mouse5"
+    type: "combo"
+    description: "Shift + Mouse 5"
+
+  profession_4:
+    default: "f4"
+    user: "shift+mouse4"
+    type: "combo"
+    description: "Shift + Mouse 4"
+
+  profession_5:
+    default: "f5"
+    user: "shift+mouse3"
+    type: "combo"
+    description: "Shift + Mouse 3 (Middle Click)"
+
+  profession_6:
+    default: "f6"
+    user: "f6"
+    type: "key"
+
+  profession_7:
+    default: "f7"
+    user: "shift+1"
+    type: "combo"
+    description: "Shift + 1"
+
+  special_action:
+    default: "n"
+    user: "shift+e"
+    type: "combo"
+    description: "Shift + E"

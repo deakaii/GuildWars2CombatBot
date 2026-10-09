@@ -1,0 +1,471 @@
+professions:
+  Elementalist:
+    elite_specs:
+      Tempest:
+        builds:
+        - name: Alacrity Tempest
+          description: Elemental overload rotation
+          has_unique_mechanic_bar: true
+      Weaver:
+        builds:
+        - name: Power Weaver
+          description: Dual attunement sword/dagger rotation
+          has_unique_mechanic_bar: true
+      Catalyst:
+        builds:
+        - name: Quickness Catalyst
+          description: Jade sphere and elemental hammer combo rotation
+          has_unique_mechanic_bar: true
+      Evoker:
+        builds:
+        - name: Evoker Build
+          description: High tier elemental invocation rotation
+          has_unique_mechanic_bar: true
+  Mesmer:
+    elite_specs:
+      Chronomancer:
+        builds:
+        - name: Power Chronomancer
+          description: Continuum split time dilation burst rotation
+          has_unique_mechanic_bar: true
+      Mirage:
+        builds:
+        - name: Condition Mirage
+          description: Mirage cloak ambush clone rotation
+          has_unique_mechanic_bar: true
+      Virtuoso:
+        builds:
+        - name: Power Virtuoso
+          description: 5-Dagger / blade song shatter burst
+          has_unique_mechanic_bar: true
+          mechanic_type: 5_blade_charges
+      Troubadour:
+        builds:
+        - name: Troubadour Build
+          description: Aura and sonic cadence rotation
+          has_unique_mechanic_bar: true
+  Necromancer:
+    elite_specs:
+      Reaper:
+        builds:
+        - name: Power Reaper
+          description: Reaper shroud spin to win burst rotation
+          has_unique_mechanic_bar: true
+      Scourge:
+        builds:
+        - name: Condition Scourge
+          description: Sand shades F1-F5 barrier rotation
+          has_unique_mechanic_bar: true
+      Harbinger:
+        builds:
+        - name: Quickness Harbinger
+          description: Harbinger shroud blight gun rotation
+          has_unique_mechanic_bar: true
+      Ritualist:
+        builds:
+        - name: Ritualist Build
+          description: Spirit summoning and urn channel rotation
+          has_unique_mechanic_bar: true
+  Engineer:
+    elite_specs:
+      Scrapper:
+        builds:
+        - name: Quickness Scrapper
+          description: Superspeed gyros and quickness boon generation
+          has_unique_mechanic_bar: true
+          mechanic_type: function_gyro
+      Holosmith:
+        builds:
+        - name: Power Holosmith
+          description: Photon Forge burst rotation with heat management
+          has_unique_mechanic_bar: true
+          mechanic_type: heat_forge
+      Mechanist:
+        mechanic_name: Jade Mech Commands
+        mechanic_slots:
+          mech_f1:
+          - 0.0798
+          - 0.2206
+          - 0.0399
+          - 0.1559
+          mech_f2:
+          - 0.1246
+          - 0.2206
+          - 0.0399
+          - 0.1559
+          mech_f3:
+          - 0.1694
+          - 0.2206
+          - 0.0399
+          - 0.1559
+        builds:
+        - name: Power Mechanist
+          description: High sustained power DPS with Jade Mech command synchronization
+          has_unique_mechanic_bar: true
+          mechanic_type: mech_commands
+          rotation_type: priority_list
+          opener:
+          - name: Skill 3 (Net Shot)
+            key: '3'
+            cast_delay: 0.4
+            cooldown: 8.0
+            cancellable: true
+          - name: Skill 2 (Blunderbuss)
+            key: '2'
+            cast_delay: 0.5
+            cooldown: 8.0
+            cancellable: true
+          - name: Skill 4 (Overcharged Shot)
+            key: '4'
+            cast_delay: 0.65
+            cooldown: 12.0
+            cancellable: true
+          - name: Skill 5 (Jump Shot)
+            key: '5'
+            cast_delay: 0.85
+            cooldown: 18.0
+            cancellable: false
+            double_tap: true
+          loop: []
+          priority_list:
+          - name: Skill 2 (Blunderbuss)
+            key: '2'
+            priority: 90
+            cast_delay: 0.5
+            cooldown: 8.0
+            cancellable: true
+          - name: Skill 3 (Net Shot)
+            key: '3'
+            priority: 80
+            cast_delay: 0.4
+            cooldown: 8.0
+            cancellable: true
+          - name: Skill 4 (Overcharged Shot)
+            key: '4'
+            priority: 70
+            cast_delay: 0.65
+            cooldown: 12.0
+            cancellable: true
+          - name: Skill 5 (Jump Shot)
+            key: '5'
+            priority: 60
+            cast_delay: 0.85
+            cooldown: 18.0
+            cancellable: false
+            double_tap: true
+          - name: Throw Mine (Utility E)
+            key: e
+            priority: 50
+            cast_delay: 0.35
+            cooldown: 15.0
+            cancellable: true
+            double_tap: true
+          - name: Skill 1 (Rifle Burst Filler)
+            key: '1'
+            priority: 20
+            cast_delay: 0.4
+            cooldown: 1.2
+            is_auto_attack: true
+          - name: Heal Q (Emergency Sustain)
+            key: q
+            priority: 120
+            cooldown: 20.0
+          mechanic_skills:
+          - name: Core Reactor Shot (F2 / M4)
+            key: f2
+            priority: 95
+            cooldown: 15.0
+            is_instant: true
+          - name: Jade Mortar (F3 / Shift+M5)
+            key: f3
+            priority: 90
+            cooldown: 20.0
+            is_instant: true
+          - name: Spark Revolver (F1 / M5)
+            key: f1
+            priority: 85
+            cooldown: 8.0
+            is_instant: true
+          - name: Overclock Signet (T)
+            key: t
+            priority: 40
+            cast_delay: 0.3
+            cooldown: 70.0
+        - name: Condition Mechanist
+          description: Sustained burning and bleeding condition damage
+          has_unique_mechanic_bar: true
+      Amalgam:
+        builds:
+        - name: Amalgam Build
+          description: Fused tech and bio-enhancement rotation
+          has_unique_mechanic_bar: true
+  Ranger:
+    elite_specs:
+      Druid:
+        builds:
+        - name: Heal Alacrity Druid
+          description: Celestial avatar healing and glyph rotation
+          has_unique_mechanic_bar: true
+      Soulbeast:
+        builds:
+        - name: Power Soulbeast
+          description: Pet merge beastmode burst rotation
+          has_unique_mechanic_bar: true
+      Untamed:
+        builds:
+        - name: Power Untamed
+          description: Unleashed pet and ambush rotation
+          has_unique_mechanic_bar: true
+      Galeshot:
+        builds:
+        - name: Galeshot Build
+          description: Wind-infused ranged barrage rotation
+          has_unique_mechanic_bar: true
+  Thief:
+    elite_specs:
+      Daredevil:
+        builds:
+        - name: Power Daredevil
+          description: Triple dodge bounding staff rotation
+          has_unique_mechanic_bar: false
+      Deadeye:
+        builds:
+        - name: Power Deadeye
+          description: Deadeye's mark malice stealth attacks
+          has_unique_mechanic_bar: true
+      Specter:
+        builds:
+        - name: Alacrity Specter
+          description: Shadow shroud initiative and tether rotation
+          has_unique_mechanic_bar: true
+      Antiquary:
+        builds:
+        - name: Antiquary Build
+          description: Relic and curio artifact rotation
+          has_unique_mechanic_bar: true
+  Guardian:
+    elite_specs:
+      Core:
+        mechanic_name: Virtues
+        mechanic_slots:
+          mech_f1:
+          - 0.2166
+          - 0.2971
+          - 0.057
+          - 0.2088
+          mech_f2:
+          - 0.2736
+          - 0.2971
+          - 0.057
+          - 0.2088
+          mech_f3:
+          - 0.3306
+          - 0.2971
+          - 0.057
+          - 0.2088
+        builds:
+        - name: Core Guardian DPS
+          description: Sword/Focus and Greatsword burst rotation with Virtue weaving
+          has_unique_mechanic_bar: false
+          rotation_type: rigid_loop
+          opener:
+          - name: Shield of Wrath (Focus 5)
+            key: '5'
+            cast_delay: 0.5
+            cooldown: 35.0
+          - name: Sword of Justice (Utility R)
+            key: r
+            cast_delay: 0.3
+            cooldown: 15.0
+            double_tap: true
+          - name: Ray of Judgment (Focus 4)
+            key: '4'
+            cast_delay: 0.5
+            cooldown: 13.0
+          - name: Symbol of Punishment (Skill 2)
+            key: '2'
+            cast_delay: 0.4
+            cooldown: 8.0
+            double_tap: true
+          - name: Zealot's Defense (Sword 3)
+            key: '3'
+            cast_delay: 1.8
+            cooldown: 12.0
+          - name: Weapon Swap (`)
+            key: '`'
+            cast_delay: 0.15
+            cooldown: 9.8
+            is_instant: true
+          loop:
+          - name: Symbol of Resolution (GS 4)
+            key: '4'
+            cast_delay: 0.6
+            cooldown: 12.0
+          - name: Whirling Wrath (GS 2)
+            key: '2'
+            cast_delay: 1.5
+            cooldown: 8.0
+          - name: Sword of Justice (Utility R)
+            key: r
+            cast_delay: 0.3
+            cooldown: 15.0
+            double_tap: true
+          - name: Binding Blade (GS 5)
+            key: '5'
+            cast_delay: 0.5
+            cooldown: 20.0
+          - name: Leap of Faith (GS 3)
+            key: '3'
+            cast_delay: 0.8
+            cooldown: 12.0
+            cancellable: false
+          - name: GS Auto-Attacks (Strike x2)
+            key: '1'
+            cast_delay: 2.2
+            cooldown: 0.0
+            is_auto_attack: true
+          - name: Whirling Wrath (GS 2)
+            key: '2'
+            cast_delay: 1.5
+            cooldown: 8.0
+          - name: Symbol of Resolution (GS 4)
+            key: '4'
+            cast_delay: 0.6
+            cooldown: 12.0
+          - name: GS Auto-Attack (Strike x1)
+            key: '1'
+            cast_delay: 1.0
+            cooldown: 0.0
+            is_auto_attack: true
+          - name: Sword of Justice (Utility R)
+            key: r
+            cast_delay: 0.3
+            cooldown: 15.0
+            double_tap: true
+          - name: Weapon Swap to Sword/Focus
+            key: '`'
+            cast_delay: 0.15
+            cooldown: 9.8
+            is_instant: true
+          - name: Zealot's Defense (Sword 3)
+            key: '3'
+            cast_delay: 1.8
+            cooldown: 12.0
+          - name: Ray of Judgment (Focus 4)
+            key: '4'
+            cast_delay: 0.5
+            cooldown: 13.0
+          - name: Symbol of Punishment (Skill 2)
+            key: '2'
+            cast_delay: 0.4
+            cooldown: 8.0
+            double_tap: true
+          - name: Sword Auto-Attacks (Chains x5)
+            key: '1'
+            cast_delay: 4.5
+            cooldown: 0.0
+            is_auto_attack: true
+          - name: Symbol of Punishment (Skill 2)
+            key: '2'
+            cast_delay: 0.4
+            cooldown: 8.0
+            double_tap: true
+          - name: Zealot's Defense (Sword 3)
+            key: '3'
+            cast_delay: 1.8
+            cooldown: 12.0
+          - name: Shield of Wrath (Focus 5)
+            key: '5'
+            cast_delay: 0.5
+            cooldown: 35.0
+          - name: Weapon Swap to Greatsword
+            key: '`'
+            cast_delay: 0.15
+            cooldown: 9.8
+            is_instant: true
+          priority_list: []
+          mechanic_skills:
+          - name: Virtue of Justice (M5 / F1)
+            key: f1
+            priority: 100
+            cooldown: 0.8
+            is_instant: true
+          - name: Virtue of Resolve (M4 / F2)
+            key: f2
+            priority: 60
+            cooldown: 0.8
+            is_instant: true
+          - name: Virtue of Courage (Shift+M5 / F3)
+            key: f3
+            priority: 50
+            cooldown: 0.8
+            is_instant: true
+          - name: Advance! (Utility E)
+            key: e
+            priority: 45
+            cooldown: 20.0
+            is_instant: true
+      Dragonhunter:
+        builds:
+        - name: Power Dragonhunter
+          description: Longbow trap burst rotation
+          has_unique_mechanic_bar: true
+      Firebrand:
+        builds:
+        - name: Quickness Firebrand
+          description: Tome pages and mantra support rotation
+          has_unique_mechanic_bar: true
+      Willbender:
+        builds:
+        - name: Power Willbender
+          description: High mobility flame virtue rotation
+          has_unique_mechanic_bar: true
+      Luminary:
+        builds:
+        - name: Luminary Build
+          description: Solar aura radiance rotation
+          has_unique_mechanic_bar: true
+  Revenant:
+    elite_specs:
+      Herald:
+        builds:
+        - name: Quickness Herald
+          description: Dragon stance facet energy upkeep
+          has_unique_mechanic_bar: true
+      Renegade:
+        builds:
+        - name: Alacrity Renegade
+          description: Kalla warband summons and shortbow
+          has_unique_mechanic_bar: true
+      Vindicator:
+        builds:
+        - name: Power Vindicator
+          description: Greatsword death drop dodge rotation
+          has_unique_mechanic_bar: true
+      Conduit:
+        builds:
+        - name: Conduit Build
+          description: Mists flow channel rotation
+          has_unique_mechanic_bar: true
+  Warrior:
+    elite_specs:
+      Berserker:
+        builds:
+        - name: Power Berserker
+          description: Primal burst adrenaline decapitate spam
+          has_unique_mechanic_bar: true
+      Spellbreaker:
+        builds:
+        - name: Power Spellbreaker
+          description: Full counter reactive burst rotation
+          has_unique_mechanic_bar: true
+      Bladesworn:
+        builds:
+        - name: Power Bladesworn
+          description: Dragon trigger charge slash rotation
+          has_unique_mechanic_bar: true
+      Paragon:
+        builds:
+        - name: Paragon Build
+          description: Chant, shout, and javelin command rotation
+          has_unique_mechanic_bar: true
