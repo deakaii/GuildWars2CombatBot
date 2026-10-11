@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: 'No resource. Overloads: hold an attunement ~4s, then press its key again (F1-F4)'

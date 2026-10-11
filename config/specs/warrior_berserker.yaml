@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: discrete_pips
+  name: adrenaline
+  max_pips: 3
+  verified: false
+  notes: 'Adrenaline: 3 bars above the weapon skills, filled by hitting enemies. F1 burst power scales with bars spent. F2 Berserk mode'

@@ -25,5 +25,14 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: discrete_pips
+  name: initiative
+  max_pips: 12
+  verified: false
+  notes: 'Initiative: segmented bar above the weapon skills. Weapon skills 2-5 cost initiative. 12 base, 15 with Preparedness'
+extra_resources:
+- type: discrete_pips
+  name: endurance
+  max_pips: 3
+  verified: false
+  notes: 'Daredevil endurance: 3 dodge bars instead of 2'

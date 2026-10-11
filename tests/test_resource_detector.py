@@ -5,6 +5,7 @@ and Resource-Gated Rotation Actions.
 
 import os
 import sys
+import unittest
 import numpy as np
 import cv2
 
@@ -242,6 +243,39 @@ def test_configurable_rotation_behavior_resource_gating():
     # Now F1 condition is satisfied (5/5 blades) -> Fires high-priority burst spender!
     assert act2.key == "f1", f"Expected F1 to fire when 5 blades are stocked, got '{act2.key}'"
     print("  [OK] Gating verified: F1 held at 0 blades (fallback to builder 2); F1 fired at 5 blades!")
+
+
+class TestDeadeyeOnRealFrames(unittest.TestCase):
+    """Real Deadeye HUD frames (3440x1440) over a bright sand background: initiative zigzag + malice arc."""
+
+    FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "resources")
+
+    def _read(self, name):
+        img = cv2.imread(os.path.join(self.FIX, name))
+        self.assertIsNotNone(img, name)
+        det = UniversalResourceDetector(profession="thief", spec="deadeye")
+        return det.get_resource_state(img), det.get_resource_state(img, "malice")
+
+    def test_idle_full_initiative_no_malice(self):
+        init, malice = self._read("deadeye_idle_init15_malice0.png")
+        self.assertEqual((init.current_value, init.max_value), (15, 15))
+        self.assertEqual((malice.current_value, malice.max_value), (0, 5))
+
+    def test_combat_low_initiative_full_malice(self):
+        init, malice = self._read("deadeye_combat_init3_malice5.png")
+        self.assertEqual(init.current_value, 3)
+        self.assertEqual(malice.current_value, 5)
+        self.assertTrue(malice.is_full)
+
+    def test_combat_partial_initiative_and_malice(self):
+        init, malice = self._read("deadeye_combat_init8_malice4.png")
+        self.assertEqual(init.current_value, 8)
+        self.assertEqual(malice.current_value, 4)
+
+    def test_unknown_resource_name_raises(self):
+        det = UniversalResourceDetector(profession="thief", spec="deadeye")
+        with self.assertRaises(KeyError):
+            det.get_resource_state(np.zeros((222, 1026, 3), np.uint8), "adrenaline")
 
 
 if __name__ == "__main__":

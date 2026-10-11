@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: continuous_gauge
+  name: energy
+  max_value: 30
+  verified: false
+  notes: Jade Sphere energy, filled by combat. F5 Deploy Jade Sphere costs 10. UNSURE of the 30 max

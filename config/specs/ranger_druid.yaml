@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: continuous_gauge
+  name: astral_force
+  max_value: 100
+  verified: false
+  notes: Astral Force fills from damage and healing. Celestial Avatar (F5) needs 100%

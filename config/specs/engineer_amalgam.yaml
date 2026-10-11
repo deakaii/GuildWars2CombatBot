@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: 'UNSURE: F5 Evolve / F2-F4 morphs; check for a gauge'

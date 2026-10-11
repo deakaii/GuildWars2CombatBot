@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: 'UNSURE: instrument F-skills; check whether clones or another counter exists'

@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: continuous_gauge
+  name: life_force
+  max_value: 100
+  verified: false
+  notes: Life Force bar above the weapon skills. Shroud (F1) needs some to enter and drains it while active

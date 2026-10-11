@@ -25,5 +25,41 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: discrete_pips
+  name: initiative
+  max_pips: 15
+  verified: true
+  notes: 'Initiative: 15 diamonds in a zigzag above weapon skills 1-3, filling left to right. Lit = white (V~254), empty = black (V~33). Weapon skills 2-5 cost initiative'
+  # Centre of each diamond, left to right, normalized to the HUD frame (measured at 3440x1440)
+  pip_points:
+  - [0.1940, 0.2928]
+  - [0.2086, 0.2117]
+  - [0.2232, 0.2928]
+  - [0.2378, 0.2117]
+  - [0.2524, 0.2928]
+  - [0.2671, 0.2117]
+  - [0.2827, 0.2928]
+  - [0.2973, 0.2117]
+  - [0.3119, 0.2928]
+  - [0.3265, 0.2117]
+  - [0.3411, 0.2928]
+  - [0.3567, 0.2117]
+  - [0.3713, 0.2928]
+  - [0.3860, 0.2117]
+  - [0.4006, 0.2928]
+  sample_radius: 2
+  brightness_threshold: 120.0
+extra_resources:
+- type: discrete_pips
+  name: malice
+  max_pips: 5
+  verified: true
+  notes: 'Malice: 5 orbs in an arc above the heal skill, at the top edge of the HUD frame. Lit = burning orange (V~190-230), empty = black with purple sparks (V<45). Built by hitting your Deadeye''s Mark target'
+  pip_points:
+  - [0.4503, 0.1036]
+  - [0.4717, 0.0586]
+  - [0.4990, 0.0315]
+  - [0.5224, 0.0541]
+  - [0.5497, 0.1081]
+  sample_radius: 3
+  brightness_threshold: 120.0
