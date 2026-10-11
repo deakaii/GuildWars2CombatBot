@@ -26,7 +26,7 @@ from profiles.profile_core_guardian import ProfileCoreGuardian
 from profiles.profile_charges import ProfileCharges
 from profiles.profile_mech import ProfileMech
 from profiles.configurable_profile import ConfigurableProfile
-from profiles.simple_rotation import SimpleRotationProfile, load_simple_rotation, rotation_path
+from profiles.simple_rotation import SimpleRotationBehavior, SimpleRotationProfile, load_simple_rotation, rotation_path
 from core.rotation_parser import (
     parse_build_rotation,
     delete_build,
@@ -1202,7 +1202,9 @@ class ModernBotGUI:
         """Resets active rotation state machine back to the opening burst sequence."""
         if self.active_engine:
             for b in self.active_engine.behaviors:
-                if hasattr(b, "state_machine"):
+                if isinstance(b, SimpleRotationBehavior):
+                    b.reset()
+                elif hasattr(b, "state_machine"):
                     b.state_machine.reset_to_opener()
                     if hasattr(b, "active_weapon_set"):
                         b.active_weapon_set = "sword_focus"
