@@ -97,6 +97,7 @@ loop:
       - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
   - name: Shadow Flare combo
     when: [8]
+    when_shows: {8: 41158}               # Shadow Flare itself, not Shadow Swap (same slot, flips)
     steps:
       - 8                                 # Shadow Flare
       - 3                                 # Three Round Burst x2

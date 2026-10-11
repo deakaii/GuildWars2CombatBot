@@ -97,6 +97,7 @@ class Block:
     name: str
     when: List[str]
     steps: List[Step]
+    when_shows: Dict[str, List[int]] = field(default_factory=dict)   # skill -> icon ids it must show
 
 
 @dataclass
@@ -198,7 +199,12 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
         if isinstance(raw_loop, list) and all(isinstance(b, dict) and "steps" in b for b in raw_loop):
             for i, b in enumerate(raw_loop):
                 name = str(b.get("name") or f"Block {i + 1}")
-                loop.append(Block(name, skill_list(b.get("when") or [], f"{name} when"), steps(b["steps"], name)))
+                shows = b.get("when_shows") or {}
+                if not isinstance(shows, dict):
+                    raise ValueError(f"{name} when_shows: map skill numbers to API skill ids, e.g. {{8: 41158}}")
+                loop.append(Block(name, skill_list(b.get("when") or [], f"{name} when"), steps(b["steps"], name),
+                                  {skill(k): ([int(x) for x in v] if isinstance(v, list) else [int(v)])
+                                   for k, v in shows.items()}))
         else:
             loop.append(Block("Loop", [], steps(raw_loop, "loop")))
 
@@ -447,8 +453,8 @@ class SimpleRotationBehavior(BaseBehavior):
         self.step_press = None
         self.wait_noted = False
 
-    def _waiting(self, now: float, why: str) -> Tuple[bool, Any]:
-        if not self.wait_noted and now - self.step_started >= WAIT_NOTE_AFTER:
+    def _waiting(self, now: float, why: str, since: Optional[float] = None) -> Tuple[bool, Any]:
+        if not self.wait_noted and now - (self.step_started if since is None else since) >= WAIT_NOTE_AFTER:
             self.wait_noted = True
             step = self.steps[self.step_i]
             self.log(f"[{self.rotation.name}] {self.block} step {self.step_i + 1} ({step.describe()}): waiting, {why}")
@@ -456,7 +462,8 @@ class SimpleRotationBehavior(BaseBehavior):
 
     def _pick_block(self, frame, now: float) -> bool:
         for b in self.rotation.loop:
-            if all(self._can_press(frame, s, now) for s in b.when):
+            if all(self._can_press(frame, s, now) for s in b.when) and all(
+                    self.icon_reader(frame, s, ids) for s, ids in b.when_shows.items()):
                 self.steps, self.step_i, self.block = b.steps, 0, b.name
                 self.log(f"[{self.rotation.name}] {b.name}")
                 return True
@@ -483,7 +490,7 @@ class SimpleRotationBehavior(BaseBehavior):
                 self._advance()
                 continue
             if p is not None and p in self.outstanding:
-                return self._waiting(now, "pressed but not seen going off (no cooldown, no resource drop)")
+                return self._waiting(now, "pressed but not seen going off (no cooldown, no resource drop)", p.pressed_at)
 
             skill = step.skill
             if step.only_if and not self._has(frame, step.only_if):
@@ -577,7 +584,7 @@ class SimpleRotationProfile(BaseCharacterProfile):
         super().__init__(name=rotation.name, signature_template=None)
         resources = UniversalResourceDetector(profession=profession, spec=spec)
         check_resources(rotation, resources)
-        for sids in rotation.icons.values():
+        for sids in list(rotation.icons.values()) + [ids for blk in rotation.loop for ids in blk.when_shows.values()]:
             for sid in sids:
                 ensure_icon(sid)
         self.rotation_behavior = SimpleRotationBehavior(

@@ -261,6 +261,15 @@ class TestDeadeyeRotation(unittest.TestCase):
         self.tick(int(0.3 / TICK))
         self.assertEqual(self.pressed(), ["3"], "gave up on F2 after 1 s, not 6 s")
 
+    def test_block_waits_for_its_icon_not_the_flipped_skill(self):
+        rot = parse_simple_rotation({"loop": [
+            {"name": "Flare", "when": [8], "when_shows": {8: 41158}, "steps": [8]},
+            {"name": "Other", "when": [3], "steps": [3]}]})
+        self.make(rot)
+        self.bot.icon_reader = lambda frame, skill, ids: False      # slot 8 shows Shadow Swap
+        self.tick()
+        self.assertEqual(self.bot.block, "Other")
+
     def test_mistakes_are_reported(self):
         with self.assertRaisesRegex(ValueError, "unknown step key"):
             parse_simple_rotation({"opener": [{"skill": 3, "wiat": {"malice": 5}}]})
