@@ -5,11 +5,12 @@ description: Deadeye Specialization Layout
 mechanic_bar:
   f_slots_count: 3
   slots:
+    # Deadeye's Mark sits alone above weapon swap / skill 1 (measured at 3440x1440)
     mech_f1:
-    - 0.204
-    - 0.1562
-    - 0.055
-    - 0.3438
+    - 0.3187
+    - 0.1441
+    - 0.0224
+    - 0.2477
     mech_f2:
     - 0.261
     - 0.1562

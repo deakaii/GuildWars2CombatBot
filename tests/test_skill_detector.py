@@ -221,6 +221,21 @@ class TestSkillDetectorOnRealHud(unittest.TestCase):
         finally:
             os.remove(tmp_path)
 
+    def test_orb_found_among_red_weapon_icons(self):
+        """Deadeye at 3440x1440: weapon icons 1-5 are red and touch the orb, so the orb must
+        not be merged with them or swapped for a red utility icon (orb is at screen center)."""
+        half = cv2.imread(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                       "fixtures", "resources", "deadeye_skill_bar_half.png"))
+        self.assertIsNotNone(half)
+        screen = np.full((1440, 3440, 3), 60, np.uint8)
+        screen[1008:, 860:2580] = cv2.resize(half, (1720, 432), interpolation=cv2.INTER_CUBIC)
+        cx, cy, r = ActionSkillDetector.detect_health_orb(screen)[:3]
+        self.assertAlmostEqual(cx, 1720, delta=4)
+        self.assertAlmostEqual(r, 69, delta=4)
+        geom = ActionSkillDetector.detect_skill_bar(screen, screen_w=3440, screen_h=1440)
+        self.assertAlmostEqual(geom.slot_size, 73, delta=4)
+        self.assertAlmostEqual(geom.bottom_center_roi["center_offset_ratio_x"], 0.0, delta=0.005)
+
 
 if __name__ == "__main__":
     unittest.main()

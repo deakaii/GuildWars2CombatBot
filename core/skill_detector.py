@@ -68,8 +68,10 @@ class ActionSkillDetector:
         # Deep orb red only. The orange endurance ring (hue ~15-25) is excluded;
         # including it inflated the radius and threw every slot off.
         red_mask = (((hue <= 8) | (hue >= 172)) & (sat >= 150) & (val >= 60)).astype(np.uint8)
-        k = max(3, int(min(rh, rw) * 0.02) | 1)
-        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)))
+        # Only close single-pixel speckles: a wider close bridges the orb to red skill icons
+        # beside it (a Deadeye's weapon bar), which inflates the measured radius. The health
+        # number inside the orb is a hole, filled below.
+        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
 
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(red_mask)
         best_orb = None
@@ -77,10 +79,9 @@ class ActionSkillDetector:
 
         for i in range(1, num_labels):
             x, y, cw, ch = stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP], stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT]
-            if cw < max(12, rw * 0.02):
-                continue
-            aspect = cw / float(ch)
-            if aspect < 0.6 or aspect > 1.8:
+            # No aspect-ratio filter: red skill icons touching the orb (e.g. a Deadeye's whole
+            # weapon bar) merge with it into one wide blob; the inscribed circle below finds the orb.
+            if cw < max(12, rw * 0.02) or ch < max(12, rh * 0.02):
                 continue
 
             # Fill enclosed holes (the white health number inside the orb)
