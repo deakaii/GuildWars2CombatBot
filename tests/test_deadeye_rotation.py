@@ -91,7 +91,7 @@ class TestDeadeyeRotation(unittest.TestCase):
         self.game = Game(self.clock, **game)
         self.bot = SimpleRotationBehavior(rotation or load_simple_rotation("Thief", "Deadeye"),
                                           self.game, self.game, clock=self.clock, log=lambda m: None,
-                                          icon_reader=lambda frame, skill, sid: self.game.stealthed)
+                                          icon_reader=lambda frame, skill, sid: self.game.stealthed if skill == "1" else True)
 
     def tick(self, n=1):
         for _ in range(n):

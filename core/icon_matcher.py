@@ -64,5 +64,5 @@ class IconMatcher:
         b = cv2.cvtColor(icon[:top], cv2.COLOR_BGR2GRAY).astype(np.float32)
         return float(cv2.matchTemplate(a, b, cv2.TM_CCOEFF_NORMED)[0, 0])
 
-    def shows(self, crop: np.ndarray, skill_id: int) -> bool:
-        return self.score(crop, skill_id) >= SHOWS_THRESHOLD
+    def shows(self, crop: np.ndarray, skill_id: int, threshold: float = SHOWS_THRESHOLD) -> bool:
+        return self.score(crop, skill_id) >= threshold

@@ -19,7 +19,8 @@ Sequence mode (e.g. Deadeye) adds an opener and a loop of blocks:
     instant: [f1, f2, 8]           # pressed even mid-cast; the sequence moves on once pressed
     costs:   {3: {initiative: 4}}  # waits until affordable; counts as cast once the amount drops
     icons:   {1: 44087}            # ready only while the slot shows this skill (GW2 API id);
-                                   # counts as cast once it stops showing it (e.g. stealth attack)
+                                   # counts as cast once it stops showing it (e.g. stealth attack).
+                                   # {f1: {id: 43390, min: 0.89}} sets a stricter match threshold
 
 A step is a skill, {skill, wait: {resource: min}, after: {skill: seconds}}, or {auto: N}
 (press nothing for N auto-attacks). Resources are the spec file's resource / extra_resources.
@@ -105,6 +106,7 @@ class SimpleRotation:
     instant: Set[str] = field(default_factory=set)
     costs: Dict[str, Dict[str, float]] = field(default_factory=dict)
     icons: Dict[str, int] = field(default_factory=dict)
+    icon_min: Dict[str, float] = field(default_factory=dict)   # per-skill match threshold
     opener: List[Step] = field(default_factory=list)
     loop: List[Block] = field(default_factory=list)
     auto_attack_seconds: float = 0.8
@@ -206,6 +208,17 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
     raw_icons = data.get("icons") or {}
     if not isinstance(raw_icons, dict):
         raise ValueError("'icons' must map skill numbers to GW2 API skill ids, e.g. {1: 44087}")
+    icons: Dict[str, int] = {}
+    icon_min: Dict[str, float] = {}
+    for k, v in raw_icons.items():
+        if isinstance(v, dict):
+            if "id" not in v:
+                raise ValueError(f"icons {k}: give the API skill id, e.g. {{id: 43390, min: 0.89}}")
+            icons[skill(k)] = int(v["id"])
+            if "min" in v:
+                icon_min[skill(k)] = float(v["min"])
+        else:
+            icons[skill(k)] = int(v)
 
     raw_costs = data.get("costs") or {}
     if not isinstance(raw_costs, dict):
@@ -218,7 +231,8 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
         no_interrupt=seconds_map("no_interrupt"),
         instant=set(skill_list(data.get("instant") or [], "instant")),
         costs={skill(k): amounts(v, f"costs {k}") for k, v in raw_costs.items()},
-        icons={skill(k): int(v) for k, v in raw_icons.items()},
+        icons=icons,
+        icon_min=icon_min,
         opener=opener,
         loop=loop,
         auto_attack_seconds=float(data.get("auto_attack_seconds", 0.8)),
@@ -326,7 +340,9 @@ class SimpleRotationBehavior(BaseBehavior):
         if not rect:
             return False
         x, y, w, h = rect
-        return self._matcher.shows(frame[y:y + h, x:x + w], skill_id)
+        threshold = self.rotation.icon_min.get(skill)
+        crop = frame[y:y + h, x:x + w]
+        return self._matcher.shows(crop, skill_id) if threshold is None else self._matcher.shows(crop, skill_id, threshold)
 
     def _sample_icons(self, frame) -> None:
         for skill, sid in self.rotation.icons.items():
@@ -335,7 +351,7 @@ class SimpleRotationBehavior(BaseBehavior):
             n = n + 1 if v == last else 1
             self._icon_seen[skill] = (v, n)
             if n >= ICON_STABLE_FRAMES or skill not in self._icon_state:
-                self._icon_state[skill] = v if n >= ICON_STABLE_FRAMES else False
+                self._icon_state[skill] = v                 # first reading is taken as is
 
     def _shows_icon(self, frame, skill: str) -> bool:
         return skill not in self.rotation.icons or self._icon_state.get(skill, False)

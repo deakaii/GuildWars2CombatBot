@@ -30,6 +30,10 @@ instant: [f1, f2, 5, 6, 7, 0]
 # when the icon goes away (recorded: stealth ~0.6 s after Steal Time behind a cast).
 icons:
   1: 44087
+  # Mark: only the bright, ready icon (recorded: ready 0.92-0.94, cooling down <= 0.85)
+  f1: {id: 43390, min: 0.89}
+  # Steal Time exists only after a Mark lands; an empty F2 slot must not read as ready
+  f2: 42863
 
 # Waits until affordable; a skill counts as cast once the amount drops
 costs:
