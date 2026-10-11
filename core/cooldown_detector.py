@@ -236,6 +236,9 @@ class UniversalCooldownDetector:
         # Always start by clearing any existing mechanic slots so nothing carries over
         self._clear_mech_slots()
         self.slot_labels = {}
+        # Slots whose art looks like white timer digits and whose timer isn't white anyway
+        # (spec mechanic_bar.no_timer_digits, e.g. Deadeye's Mark): judged by the dark overlay only
+        self.no_timer_digits = set()
 
         if not self.profession:
             return
@@ -250,6 +253,7 @@ class UniversalCooldownDetector:
                 for m_k, coords in m_slots.items():
                     self.slots[m_k] = tuple(coords)
                 self.slot_labels = m_bar.get("labels", {})
+                self.no_timer_digits = set(m_bar.get("no_timer_digits", []) or [])
                 loaded_from_spec = True
         except Exception:
             pass
@@ -380,7 +384,7 @@ class UniversalCooldownDetector:
         # -------------------------------------------------------------
         # 3. Centered White Countdown Digits
         # -------------------------------------------------------------
-        digit_detected = self._countdown_digits_present(crop)
+        digit_detected = slot_id not in getattr(self, "no_timer_digits", ()) and self._countdown_digits_present(crop)
 
         # -------------------------------------------------------------
         # 4. Universal Cooldown Logic (Radial Clock Model)
@@ -438,10 +442,6 @@ class UniversalCooldownDetector:
             # Timer text is neutral white thin strokes (tint <= ~15, fill <= ~0.57 measured);
             # bright artwork such as a flame core is tinted and solid
             if area / float(cw * ch) > 0.62:
-                continue
-            # Timer digits are taller than wide (<= ~0.81 measured); a white ring in the art
-            # (Deadeye's Mark, 1.31) is not
-            if cw > ch:
                 continue
             comp = (labels == i).astype(np.uint8)
             if chroma[comp.astype(bool)].mean() > 20:

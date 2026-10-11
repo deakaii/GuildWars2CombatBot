@@ -20,6 +20,8 @@ mechanic_bar:
   labels:
     mech_f1: F1
     mech_f2: F2
+  # Mark's eye art reads as white timer digits, and its real timer is green: use the dark overlay only
+  no_timer_digits: [mech_f1]
 resource:
   type: discrete_pips
   name: initiative

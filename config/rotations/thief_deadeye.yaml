@@ -16,8 +16,9 @@
 
 name: Power Deadeye
 
-# Pressed even mid-cast; the sequence moves on as soon as they're pressed
-instant: [f1, f2, 5, 6, 7, 0]
+# Pressed even mid-cast; the sequence moves on as soon as they're pressed.
+# f1 (Mark) is left out on purpose: the bot confirms its cooldown appeared, and retries if not.
+instant: [f2, 5, 6, 7, 0]
 
 # Waits until affordable; a skill counts as cast once the amount drops
 costs:

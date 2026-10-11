@@ -231,12 +231,14 @@ class TestLateCooldownOnRealFrames(unittest.TestCase):
             self.assertTrue(st.is_ready, name)
 
     def test_deadeye_mark_eye_ring_is_not_a_timer(self):
-        # Deadeye's Mark art is a white ring on black; it read as countdown digits, so F1 never
-        # looked ready and the rotation never marked (no malice). Ready crop = API icon at 54 px.
+        # Deadeye's Mark art (silver disc split by red dots) reads as countdown digits, so F1
+        # never looked ready and the rotation never marked (no malice). The spec turns the digit
+        # check off for that slot; its real timer is green and the dark overlay catches it.
         det = UniversalCooldownDetector(profession="thief", spec="deadeye")
-        st = det.evaluate_slot_crop(self._img("deadeye_mark_ready.png"), "mech_f1")
-        self.assertFalse(st.digit_detected)
-        self.assertTrue(st.is_ready)
+        for name in ("deadeye_mark_ready.png", "deadeye_mark_ready_live.png"):
+            st = det.evaluate_slot_crop(self._img(name), "mech_f1")
+            self.assertFalse(st.digit_detected, name)
+            self.assertTrue(st.is_ready, name)
         self.assertFalse(det.evaluate_slot_crop(self._img("deadeye_mark_cd_15s.png"), "mech_f1").is_ready)
 
 
