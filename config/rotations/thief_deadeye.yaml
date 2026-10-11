@@ -4,7 +4,7 @@
 #   1  Deadly Aim; in stealth: Malicious Death's Judgment (the stealth attack)
 #   3  Three Round Burst (4 initiative, no cooldown)
 #   5  Kneel (toggle: pressing it again stands you up)
-#   f1 Deadeye's Mark      f2 Steal Time (stealths you at 3+ malice)
+#   f1 Deadeye's Mark      f2 stolen skill, e.g. Steal Time (stealths you at 3+ malice)
 #   7  Mercy (loses all malice, recharges Deadeye's Mark; 2 charges, 1 s between uses)
 #   8  Shadow Flare (ground-targeted; flips to Shadow Swap, which flips back once used)
 #   9  Signet of Shadows (passive only, never pressed); 6 is the heal (not used)
@@ -33,8 +33,10 @@ icons:
   1: 44087
   # Mark: only the bright, ready icon (recorded: ready 0.92-0.94, cooling down <= 0.85)
   f1: {id: 43390, min: 0.89}
-  # Steal Time exists only after a Mark lands; an empty F2 slot must not read as ready
-  f2: 42863
+  # F2 holds a stolen skill only after a Mark lands, and which one depends on the target
+  # (Steal Time, Steal Defenses, ...). All of them stealth at 3+ malice, so any will do;
+  # an empty F2 slot must not read as ready.
+  f2: [42863, 43768, 40133, 40888, 43373, 44526, 40903, 40904, 39960]
 
 # Waits until affordable; a skill counts as cast once the amount drops
 costs:

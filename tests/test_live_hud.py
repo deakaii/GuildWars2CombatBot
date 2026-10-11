@@ -259,6 +259,15 @@ class TestLateCooldownOnRealFrames(unittest.TestCase):
         self.assertTrue(m.shows(self._img("deadeye_f2_steal_time.png"), 42863))
         self.assertFalse(m.shows(self._img("deadeye_f2_empty.png"), 42863), "empty F2 (no Mark yet)")
 
+    def test_deadeye_f2_accepts_any_stolen_skill(self):
+        # The stolen skill depends on the marked target: a golem gave Steal Defenses, not Steal Time
+        from profiles.simple_rotation import load_simple_rotation
+        from core.icon_matcher import IconMatcher
+        m, ids = IconMatcher(), load_simple_rotation("Thief", "Deadeye").icons["f2"]
+        self.assertTrue(any(m.shows(self._img("deadeye_f2_steal_defenses.png"), i) for i in ids))
+        self.assertTrue(any(m.shows(self._img("deadeye_f2_steal_time.png"), i) for i in ids))
+        self.assertFalse(any(m.shows(self._img("deadeye_f2_empty.png"), i) for i in ids))
+
 
 if __name__ == "__main__":
     unittest.main()

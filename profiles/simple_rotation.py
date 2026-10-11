@@ -20,7 +20,8 @@ Sequence mode (e.g. Deadeye) adds an opener and a loop of blocks:
     costs:   {3: {initiative: 4}}  # waits until affordable; counts as cast once the amount drops
     icons:   {1: 44087}            # ready only while the slot shows this skill (GW2 API id);
                                    # counts as cast once it stops showing it (e.g. stealth attack).
-                                   # {f1: {id: 43390, min: 0.89}} sets a stricter match threshold
+                                   # {f1: {id: 43390, min: 0.89}} sets a stricter match threshold;
+                                   # a list of ids accepts any of them (e.g. every stolen skill)
 
 A step is a skill, {skill, wait: {resource: min}, after: {skill: seconds}}, or {auto: N}
 (press nothing for N auto-attacks). Resources are the spec file's resource / extra_resources.
@@ -105,7 +106,7 @@ class SimpleRotation:
     no_interrupt: Dict[str, float] = field(default_factory=dict)
     instant: Set[str] = field(default_factory=set)
     costs: Dict[str, Dict[str, float]] = field(default_factory=dict)
-    icons: Dict[str, int] = field(default_factory=dict)
+    icons: Dict[str, List[int]] = field(default_factory=dict)   # skill -> acceptable API skill ids
     icon_min: Dict[str, float] = field(default_factory=dict)   # per-skill match threshold
     opener: List[Step] = field(default_factory=list)
     loop: List[Block] = field(default_factory=list)
@@ -208,17 +209,20 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
     raw_icons = data.get("icons") or {}
     if not isinstance(raw_icons, dict):
         raise ValueError("'icons' must map skill numbers to GW2 API skill ids, e.g. {1: 44087}")
-    icons: Dict[str, int] = {}
+    def ids(v) -> List[int]:
+        return [int(x) for x in v] if isinstance(v, list) else [int(v)]
+
+    icons: Dict[str, List[int]] = {}
     icon_min: Dict[str, float] = {}
     for k, v in raw_icons.items():
         if isinstance(v, dict):
             if "id" not in v:
                 raise ValueError(f"icons {k}: give the API skill id, e.g. {{id: 43390, min: 0.89}}")
-            icons[skill(k)] = int(v["id"])
+            icons[skill(k)] = ids(v["id"])
             if "min" in v:
                 icon_min[skill(k)] = float(v["min"])
         else:
-            icons[skill(k)] = int(v)
+            icons[skill(k)] = ids(v)
 
     raw_costs = data.get("costs") or {}
     if not isinstance(raw_costs, dict):
@@ -278,7 +282,7 @@ class SimpleRotationBehavior(BaseBehavior):
         resources: Optional[UniversalResourceDetector] = None,
         clock: Callable[[], float] = time.time,
         log: Callable[[str], None] = print,
-        icon_reader: Optional[Callable[[Any, str, int], bool]] = None,
+        icon_reader: Optional[Callable[[Any, str, List[int]], bool]] = None,
     ):
         super().__init__(name=f"{rotation.name}Rotation", priority=100, cooldown_seconds=0.0, cooldown_jitter_ratio=0.0)
         self.rotation = rotation
@@ -333,7 +337,7 @@ class SimpleRotationBehavior(BaseBehavior):
         st = self._status(frame, skill)
         return bool(st and not st.raw_is_ready)
 
-    def _read_icon(self, frame, skill: str, skill_id: int) -> bool:
+    def _read_icon(self, frame, skill: str, skill_ids: List[int]) -> bool:
         if self._matcher is None:
             self._matcher = IconMatcher()
         rect = self.cooldown_detector.get_slot_rect(frame.shape[:2], SKILL_SLOTS[skill])
@@ -342,11 +346,13 @@ class SimpleRotationBehavior(BaseBehavior):
         x, y, w, h = rect
         threshold = self.rotation.icon_min.get(skill)
         crop = frame[y:y + h, x:x + w]
-        return self._matcher.shows(crop, skill_id) if threshold is None else self._matcher.shows(crop, skill_id, threshold)
+        if threshold is None:
+            return any(self._matcher.shows(crop, sid) for sid in skill_ids)
+        return any(self._matcher.shows(crop, sid, threshold) for sid in skill_ids)
 
     def _sample_icons(self, frame) -> None:
-        for skill, sid in self.rotation.icons.items():
-            v = bool(self.icon_reader(frame, skill, sid))
+        for skill, sids in self.rotation.icons.items():
+            v = bool(self.icon_reader(frame, skill, sids))
             last, n = self._icon_seen.get(skill, (v, 0))
             n = n + 1 if v == last else 1
             self._icon_seen[skill] = (v, n)
@@ -568,8 +574,9 @@ class SimpleRotationProfile(BaseCharacterProfile):
         super().__init__(name=rotation.name, signature_template=None)
         resources = UniversalResourceDetector(profession=profession, spec=spec)
         check_resources(rotation, resources)
-        for sid in rotation.icons.values():
-            ensure_icon(sid)
+        for sids in rotation.icons.values():
+            for sid in sids:
+                ensure_icon(sid)
         self.rotation_behavior = SimpleRotationBehavior(
             rotation, UniversalCooldownDetector(profession=profession, spec=spec), resources
         )
