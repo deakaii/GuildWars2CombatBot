@@ -867,9 +867,24 @@ class ModernBotGUI:
         self.log_message("System initialized. Calibrated HUD loaded (2560x1600). Ready.")
 
     def log_message(self, msg: str):
+        log_file = getattr(self, "log_file", None)
+        if log_file:
+            log_file.record(msg)
+        self._show_log(msg)
+
+    def _show_log(self, msg: str):
         t = time.strftime("%H:%M:%S")
         self.txt_log.insert(tk.END, f"[{t}] {msg}\n")
         self.txt_log.see(tk.END)
+
+    def start_session_log(self) -> None:
+        """Sends print() output (engine and rotation messages) to the activity log and a session file."""
+        log_dir = os.path.join(self.base_dir, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        path = os.path.join(log_dir, time.strftime("session_%Y%m%d_%H%M%S.log"))
+        self.log_file = SessionLog(path, lambda m: self.root.after(0, self._show_log, m))
+        sys.stdout = sys.stderr = self.log_file
+        self._show_log(f"Logging this session to {path}")
 
     def _populate_professions(self):
         profs = list(self.db.get("professions", {}).keys())
@@ -1443,9 +1458,48 @@ class ModernBotGUI:
         self.root.destroy()
 
 
+class SessionLog:
+    """File-like stdout: every line goes to the session file (with milliseconds); all but the
+    engine's per-tick telemetry also go to the GUI activity log via `show`."""
+
+    HIDDEN_IN_GUI = ("Tick #",)
+
+    def __init__(self, path: str, show):
+        self.file = open(path, "a", encoding="utf-8", buffering=1)
+        self.show = show
+        self.pending = ""
+        self.lock = threading.Lock()
+
+    def write(self, text: str) -> int:
+        with self.lock:
+            self.pending += text
+            *lines, self.pending = self.pending.split("\n")
+            for line in lines:
+                line = line.rstrip()
+                if not line:
+                    continue
+                self._to_file(line)
+                if not any(h in line for h in self.HIDDEN_IN_GUI):
+                    self.show(line.strip())
+        return len(text)
+
+    def record(self, line: str) -> None:
+        """Writes a line to the session file only (the GUI shows it itself)."""
+        with self.lock:
+            self._to_file(line)
+
+    def _to_file(self, line: str) -> None:
+        now = time.time()
+        self.file.write(f"{time.strftime('%H:%M:%S', time.localtime(now))}.{int(now * 1000) % 1000:03d} {line}\n")
+
+    def flush(self) -> None:
+        self.file.flush()
+
+
 def start_gui():
     root = tk.Tk()
     app = ModernBotGUI(root)
+    app.start_session_log()
     root.mainloop()
 
 

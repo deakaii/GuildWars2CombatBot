@@ -61,6 +61,7 @@ FAILED_SKILL_BACKOFF = 1.5    # seconds to skip a skill that was pressed but nev
 MAX_QUEUED = 2                # the casting skill + one queued behind it (the game's queue depth)
 STEP_TIMEOUT = 6.0            # a sequence step stuck this long is pressed anyway (if ready) or skipped
 NEW_FIGHT_GAP = 2.0           # seconds without engine ticks (F10 / tabbed out) before the opener restarts
+WAIT_NOTE_AFTER = 1.0         # a step waiting this long logs (once) what it's waiting for
 
 
 @dataclass
@@ -263,6 +264,7 @@ class SimpleRotationBehavior(BaseBehavior):
         self.step_i = 0
         self.step_started: Optional[float] = None
         self.step_press: Optional[_Press] = None
+        self.wait_noted = False
 
     def is_on_cooldown(self, current_time: float) -> bool:
         return False   # pacing is handled by the skill-queue logic below, every engine tick
@@ -347,6 +349,14 @@ class SimpleRotationBehavior(BaseBehavior):
         self.step_i += 1
         self.step_started = None
         self.step_press = None
+        self.wait_noted = False
+
+    def _waiting(self, now: float, why: str) -> Tuple[bool, Any]:
+        if not self.wait_noted and now - self.step_started >= WAIT_NOTE_AFTER:
+            self.wait_noted = True
+            step = self.steps[self.step_i]
+            self.log(f"[{self.rotation.name}] {self.block} step {self.step_i + 1} ({step.describe()}): waiting, {why}")
+        return False, None
 
     def _pick_block(self, frame, now: float) -> bool:
         for b in self.rotation.loop:
@@ -377,19 +387,20 @@ class SimpleRotationBehavior(BaseBehavior):
                 self._advance()
                 continue
             if p is not None and p in self.outstanding:
-                return False, None                     # pressed, waiting for it to go off
+                return self._waiting(now, "pressed but not seen going off (no cooldown, no resource drop)")
 
             skill = step.skill
             instant = skill in self.rotation.instant
             if not instant and self._queue_full():
-                return False, None
+                return self._waiting(now, "skill queue busy: " + ", ".join(p.skill for p in self.outstanding))
             timed_out = now - self.step_started >= STEP_TIMEOUT
             if not self._can_press(frame, skill, now):
                 if timed_out:
                     self.log(f"[{self.rotation.name}] {self.block}: skill {skill} never became ready; skipping it")
                     self._advance()
                     continue
-                return False, None
+                backoff = now < self.backoff_until.get(skill, 0.0)
+                return self._waiting(now, "backing off after a failed press" if backoff else "not ready on screen")
             waits = dict(self.rotation.costs.get(skill, {}))
             waits.update(step.wait)
             met = self._has(frame, waits) and all(
@@ -397,7 +408,10 @@ class SimpleRotationBehavior(BaseBehavior):
             )
             if not met:
                 if not timed_out:
-                    return False, None
+                    have = ", ".join(f"{r} {self._amount(frame, r):g}/{n:g}" for r, n in waits.items())
+                    left = {s: secs - (now - self.last_went_off.get(s, float("-inf"))) for s, secs in step.after.items()}
+                    since = ", ".join(f"{t:.1f}s more after skill {s}" for s, t in left.items() if t > 0)
+                    return self._waiting(now, "; ".join(x for x in (have, since) if x))
                 self.log(f"[{self.rotation.name}] {self.block}: gave up waiting on skill {skill}'s conditions; pressing it")
             self.next_skill = skill
             return True, skill
