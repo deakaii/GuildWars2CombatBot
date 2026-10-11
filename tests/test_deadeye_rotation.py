@@ -40,6 +40,7 @@ class Game:
         self.malice_per_burst = malice_per_burst
         self.cd_until = {}
         self.shadow_swap_up = False
+        self.stealthed = False
         self.presses = []
 
     def get_slot_status(self, frame, slot_id):
@@ -59,7 +60,10 @@ class Game:
             self.initiative -= 4
             self.malice = min(5, self.malice + self.malice_per_burst)
         elif key == "1":                                  # stealth attack spends malice
-            self.malice = 0
+            if self.stealthed:
+                self.malice, self.stealthed = 0, False
+        elif key == "f2":                                 # Steal Time stealths at 3+ malice
+            self.stealthed = self.malice >= 3
         elif key == "f1":                                 # Deadeye's Mark
             self.cooldown("f1", 25)
         elif key == "6":                                  # Mercy: loses malice, recharges the Mark
@@ -72,6 +76,7 @@ class Game:
             self.shadow_swap_up = not self.shadow_swap_up
         elif key == "0":                                  # Shadow Meld
             self.cooldown("0", 60)
+            self.stealthed = True
         return True
 
     def advance(self, dt):
@@ -137,6 +142,7 @@ class TestDeadeyeRotation(unittest.TestCase):
         rot = parse_simple_rotation({"opener": [1, {"skill": "f2", "after": {1: 3}}],
                                      "instant": ["f2"], "costs": {1: {"malice": 1}}})
         self.make(rot, malice=5)
+        self.game.stealthed = True
         self.tick(100)
         self.assertEqual(self.pressed(), ["1", "f2"])
         self.assertGreaterEqual(self.press_time(1) - self.press_time(0), 3.0)
@@ -192,6 +198,32 @@ class TestDeadeyeRotation(unittest.TestCase):
         self.assertEqual(self.pressed(), [])
         self.tick(20)
         self.assertEqual(self.pressed(), ["3"])
+
+    def test_fill_builds_malice_instead_of_idling(self):
+        rot = parse_simple_rotation({
+            "opener": [{"skill": "f2", "wait": {"malice": 5}, "fill": 3}, {"skill": 1, "only_if": {"malice": 3}}],
+            "instant": ["f2"], "costs": {3: {"initiative": 4}, 1: {"malice": 1}},
+        })
+        self.make(rot, malice=1, malice_per_burst=2)
+        self.tick(60)
+        self.assertEqual(self.pressed(), ["3", "3", "f2", "1"])
+        self.assertEqual(self.game.malice, 0, "stealth attack spent the malice")
+
+    def test_stealth_attack_skipped_when_steal_time_could_not_stealth(self):
+        rot = parse_simple_rotation({
+            "opener": [{"skill": "f2", "wait": {"malice": 5}, "fill": 3}, {"skill": 1, "only_if": {"malice": 3}}, 3],
+            "instant": ["f2"], "costs": {3: {"initiative": 4}},
+        })
+        self.make(rot, malice=2)
+        self.game.cooldown("3", 6.4)              # nothing to fill with until Steal Time gives up
+        self.tick(int(6.6 / TICK))
+        self.assertEqual(self.pressed(), ["f2", "3"], "1 skipped at 2 malice, sequence moves on")
+
+    def test_unconfirmed_step_presses_once_and_moves_on(self):
+        rot = parse_simple_rotation({"opener": [{"skill": 1, "confirm": False}, 3], "costs": {1: {"malice": 1}}})
+        self.make(rot, malice=0)
+        self.tick(5)
+        self.assertEqual(self.pressed(), ["1", "3"])
 
     def test_mistakes_are_reported(self):
         with self.assertRaisesRegex(ValueError, "unknown step key"):

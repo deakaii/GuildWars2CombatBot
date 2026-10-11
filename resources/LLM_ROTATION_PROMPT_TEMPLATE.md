@@ -32,6 +32,9 @@ A step is one of:
   {skill: f2, wait: {malice: 5}}          wait until the resource reaches the amount
   {skill: f2, after: {1: 3}}              wait until 3 s after skill 1 last went off
   {auto: 5}                               press nothing for 5 auto-attacks
+  {skill: f2, wait: {malice: 5}, fill: 3} while waiting, cast 3 to build the resource
+  {skill: 1, only_if: {malice: 3}}        skip the step unless the condition holds
+  {skill: 1, confirm: false}              press once; don't wait to see it go off
 
 instant: [f1, f2, 8]              # instant-cast skills (cantrips, virtues, F-skills that don't cast);
                                   # "X during these casts" = list X as a step right after the cast
@@ -44,6 +47,7 @@ auto_attack_seconds: 0.8          # length of one auto-attack, for {auto: N}
 RULES
 - "Skill A x2" is two steps. "A -> B" is A then B.
 - Resource names must be the spec's: e.g. initiative, malice, clones, blades, life_force, heat.
+- Waiting never builds a resource that only skills generate (e.g. malice): give such waits a "fill".
 - Things the bot can't see (boons, Revealed, target state) become waits: use "after" for
   "until Revealed wears off" and an auto step for "auto-attack N times".
 - Comment each step with the skill name from the guide.

@@ -21,6 +21,9 @@ Sequence mode (e.g. Deadeye) adds an opener and a loop of blocks:
 
 A step is a skill, {skill, wait: {resource: min}, after: {skill: seconds}}, or {auto: N}
 (press nothing for N auto-attacks). Resources are the spec file's resource / extra_resources.
+More step options: fill: 3 (cast 3 while waiting on a resource, e.g. to build malice),
+only_if: {malice: 3} (skip the step unless met), confirm: false (press once, don't wait to
+see it go off).
 
 Readiness comes only from the on-screen cooldown detector (no timers), so cooldown
 reduction effects are handled automatically. A skill "went off" once its slot shows a
@@ -70,6 +73,9 @@ class Step:
     autos: int = 0
     wait: Dict[str, float] = field(default_factory=dict)    # resource -> minimum amount
     after: Dict[str, float] = field(default_factory=dict)   # skill -> seconds since it last went off
+    fill: Optional[str] = None                              # skill to cast while waiting on a resource
+    only_if: Dict[str, float] = field(default_factory=dict) # skip the step unless these amounts are met
+    confirm: bool = True                                    # False: press once and move on (no cost gate)
 
     def describe(self) -> str:
         return self.skill if self.skill else f"auto x{self.autos}"
@@ -102,6 +108,7 @@ class SimpleRotation:
         names = {r for c in self.costs.values() for r in c}
         for step in self.opener + [s for b in self.loop for s in b.steps]:
             names.update(step.wait)
+            names.update(step.only_if)
         return names
 
     def summary(self) -> str:
@@ -143,9 +150,9 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
     def step(raw, where: str) -> Step:
         if not isinstance(raw, dict):
             return Step(skill=skill(raw))
-        unknown = set(raw) - {"skill", "wait", "after", "auto"}
+        unknown = set(raw) - {"skill", "wait", "after", "auto", "fill", "only_if", "confirm"}
         if unknown:
-            raise ValueError(f"{where}: unknown step key(s) {sorted(unknown)} (use skill, wait, after, auto)")
+            raise ValueError(f"{where}: unknown step key(s) {sorted(unknown)} (use skill, wait, after, fill, only_if, confirm, auto)")
         if "auto" in raw:
             if "skill" in raw:
                 raise ValueError(f"{where}: a step is either a skill or an auto-attack pause, not both")
@@ -159,6 +166,9 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
             skill=skill(raw["skill"]),
             wait=amounts(raw.get("wait") or {}, f"{where} wait"),
             after={skill(k): float(v) for k, v in after.items()},
+            fill=skill(raw["fill"]) if raw.get("fill") is not None else None,
+            only_if=amounts(raw.get("only_if") or {}, f"{where} only_if"),
+            confirm=bool(raw.get("confirm", True)),
         )
 
     def steps(raw, where: str) -> List[Step]:
@@ -251,6 +261,8 @@ class SimpleRotationBehavior(BaseBehavior):
         self.backoff_until: Dict[str, float] = {}
         self.last_went_off: Dict[str, float] = {}
         self.next_skill: Optional[str] = None
+        self.next_is_fill = False
+        self.next_unconfirmed = False
         self._amounts: Dict[str, float] = {}   # resource readings for the current tick
         self._last_tick: Optional[float] = None
         self.reset()
@@ -390,7 +402,12 @@ class SimpleRotationBehavior(BaseBehavior):
                 return self._waiting(now, "pressed but not seen going off (no cooldown, no resource drop)")
 
             skill = step.skill
-            instant = skill in self.rotation.instant
+            if step.only_if and not self._has(frame, step.only_if):
+                have = ", ".join(f"{r} {self._amount(frame, r):g} < {n:g}" for r, n in step.only_if.items())
+                self.log(f"[{self.rotation.name}] {self.block}: skipping skill {skill} ({have})")
+                self._advance()
+                continue
+            instant = skill in self.rotation.instant or not step.confirm
             if not instant and self._queue_full():
                 return self._waiting(now, "skill queue busy: " + ", ".join(p.skill for p in self.outstanding))
             timed_out = now - self.step_started >= STEP_TIMEOUT
@@ -401,25 +418,39 @@ class SimpleRotationBehavior(BaseBehavior):
                     continue
                 backoff = now < self.backoff_until.get(skill, 0.0)
                 return self._waiting(now, "backing off after a failed press" if backoff else "not ready on screen")
-            waits = dict(self.rotation.costs.get(skill, {}))
+            waits = dict(self.rotation.costs.get(skill, {})) if step.confirm else {}
             waits.update(step.wait)
             met = self._has(frame, waits) and all(
                 now - self.last_went_off.get(s, float("-inf")) >= secs for s, secs in step.after.items()
             )
             if not met:
+                if not timed_out and step.fill and not self._has(frame, step.wait) and self._can_fill(frame, step.fill, now):
+                    self.next_skill, self.next_is_fill = step.fill, True
+                    return True, step.fill
                 if not timed_out:
                     have = ", ".join(f"{r} {self._amount(frame, r):g}/{n:g}" for r, n in waits.items())
                     left = {s: secs - (now - self.last_went_off.get(s, float("-inf"))) for s, secs in step.after.items()}
                     since = ", ".join(f"{t:.1f}s more after skill {s}" for s, t in left.items() if t > 0)
                     return self._waiting(now, "; ".join(x for x in (have, since) if x))
                 self.log(f"[{self.rotation.name}] {self.block}: gave up waiting on skill {skill}'s conditions; pressing it")
-            self.next_skill = skill
+            self.next_skill, self.next_unconfirmed = skill, not step.confirm
             return True, skill
         return False, None
 
+    def _can_fill(self, frame, skill: str, now: float) -> bool:
+        if any(p.skill == skill for p in self.outstanding):
+            return False
+        if skill not in self.rotation.instant and self._queue_full():
+            return False
+        return self._can_press(frame, skill, now) and self._has(frame, self.rotation.costs.get(skill, {}))
+
     def execute_action(self, input_controller: InputController) -> bool:
         skill = self.next_skill
+        fill = self.next_is_fill
+        unconfirmed = self.next_unconfirmed
         self.next_skill = None
+        self.next_is_fill = False
+        self.next_unconfirmed = False
         if not skill:
             return False
         gap = self.rotation.double_tap.get(skill)
@@ -430,22 +461,23 @@ class SimpleRotationBehavior(BaseBehavior):
         if not ok:
             return False
         now = self.clock()
-        instant = skill in self.rotation.instant
+        instant = skill in self.rotation.instant or unconfirmed
         hold = self.rotation.no_interrupt.get(skill, 0.0)
         if instant:
             self.last_went_off[skill] = now
-            if self.rotation.sequenced:
+            if self.rotation.sequenced and not fill:
                 self._advance()
         else:
             spent_from = {r: self._amounts[r] for r in self.rotation.costs.get(skill, {}) if r in self._amounts}
             press = _Press(skill, now, hold, spent_from)
             self.outstanding.append(press)
-            if self.rotation.sequenced:
+            if self.rotation.sequenced and not fill:
                 self.step_press = press
         extra = f" (double-tap, {gap:.2f}s)" if gap is not None else ""
         extra += f" (no-interrupt {hold:.2f}s)" if hold else ""
         extra += " (queued)" if len(self.outstanding) > 1 else ""
         extra += " (instant)" if instant else ""
+        extra += " (filling while waiting)" if fill else ""
         where = f"[{self.block}] " if self.rotation.sequenced and self.block else ""
         self.log(f"[{self.rotation.name}] {where}Skill {skill}{extra}")
         return True
