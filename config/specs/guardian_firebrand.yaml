@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: discrete_pips
+  name: pages
+  max_pips: 8
+  verified: false
+  notes: 'Tome pages: tome skills (F1-F3 tomes) cost pages and pages recharge. UNSURE of the max and whether the count is per tome'

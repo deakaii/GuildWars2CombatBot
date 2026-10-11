@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: 'UNSURE: F5 Cyclone Bow summon; check for a charge or ammo gauge'

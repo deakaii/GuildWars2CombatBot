@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: No resource. F5 Function Gyro is a cooldown

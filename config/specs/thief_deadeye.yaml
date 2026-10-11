@@ -25,5 +25,14 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: discrete_pips
+  name: initiative
+  max_pips: 12
+  verified: false
+  notes: 'Initiative: segmented bar above the weapon skills. Weapon skills 2-5 cost initiative. 12 base, 15 with Preparedness'
+extra_resources:
+- type: discrete_pips
+  name: malice
+  max_pips: 5
+  verified: false
+  notes: 'Malice pips build while hitting your Deadeye''s Mark target and are spent by Stealth Attack / Death''s Judgment. UNSURE: max may be 5 or 7 depending on traits'

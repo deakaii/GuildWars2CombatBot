@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: 'UNSURE: F4 Radiant Forge mode; check for a gauge'

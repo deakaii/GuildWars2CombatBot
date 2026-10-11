@@ -27,3 +27,5 @@ mechanic_bar:
 resource:
   type: none
   name: none
+  verified: false
+  notes: No resource. Spear of Justice F1 is a cooldown

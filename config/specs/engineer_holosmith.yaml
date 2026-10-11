@@ -25,5 +25,8 @@ mechanic_bar:
     mech_f2: F2
     mech_f3: F3
 resource:
-  type: none
-  name: none
+  type: continuous_gauge
+  name: heat
+  max_value: 150
+  verified: false
+  notes: Heat 0-150. Photon Forge (F5) builds heat; overheat at 150 forces you out
