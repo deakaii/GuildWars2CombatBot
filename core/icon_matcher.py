@@ -8,7 +8,10 @@ F-skill rule: trim the 16 px border, scale to the slot, compare the top 60% (the
 label covers the bottom) by normalized correlation.
 
 Measured on a live 3440x1440 recording: the stealth attack scored 0.44-0.65 while shown and
-<= 0.03 otherwise, so 0.35 separates them.
+<= 0.03 otherwise, so 0.35 separates them. Correlation ignores colour, and a bare patch of
+ground behind an empty slot once scored 0.42 against a stolen-skill icon, so a match also needs
+the raw colours to be close: mean absolute difference <= 60 (matches measured 14-50, that
+empty slot 74, other skills 90+).
 """
 
 import json
@@ -21,6 +24,7 @@ import numpy as np
 
 SKILL_ICONS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "templates", "skills")
 SHOWS_THRESHOLD = 0.35
+MAX_COLOUR_DIFF = 60.0
 
 
 def icon_path(skill_id: int) -> str:
@@ -54,15 +58,27 @@ class IconMatcher:
             self._icons[skill_id] = img[16:112, 16:112]
         return self._icons[skill_id]
 
-    def score(self, crop: np.ndarray, skill_id: int) -> float:
-        if crop is None or crop.size == 0:
-            return -1.0
+    def _pair(self, crop: np.ndarray, skill_id: int):
         h, w = crop.shape[:2]
         icon = cv2.resize(self._icon(skill_id), (w, h), interpolation=cv2.INTER_AREA)
         top = max(2, int(h * 0.6))
-        a = cv2.cvtColor(crop[:top], cv2.COLOR_BGR2GRAY).astype(np.float32)
-        b = cv2.cvtColor(icon[:top], cv2.COLOR_BGR2GRAY).astype(np.float32)
+        return crop[:top], icon[:top]
+
+    def score(self, crop: np.ndarray, skill_id: int) -> float:
+        """Shape match (normalized grey correlation), -1..1."""
+        if crop is None or crop.size == 0:
+            return -1.0
+        a, b = self._pair(crop, skill_id)
+        a = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        b = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype(np.float32)
         return float(cv2.matchTemplate(a, b, cv2.TM_CCOEFF_NORMED)[0, 0])
 
+    def colour_diff(self, crop: np.ndarray, skill_id: int) -> float:
+        """Mean absolute colour difference, 0-255 (lower = closer)."""
+        a, b = self._pair(crop, skill_id)
+        return float(np.abs(a.astype(np.float32) - b.astype(np.float32)).mean())
+
     def shows(self, crop: np.ndarray, skill_id: int, threshold: float = SHOWS_THRESHOLD) -> bool:
-        return self.score(crop, skill_id) >= threshold
+        if crop is None or crop.size == 0:
+            return False
+        return self.score(crop, skill_id) >= threshold and self.colour_diff(crop, skill_id) <= MAX_COLOUR_DIFF
