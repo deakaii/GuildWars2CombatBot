@@ -1,0 +1,22 @@
+# Engineer / Mechanist rotation (priority only, no opener, no timers)
+#
+# Skills are named by their skill-bar number: 1-5 weapon, 6 heal, 7-9 utilities, 0 elite,
+# swap = weapon swap. Your keybinds are applied automatically (7 -> E, 0 -> Mouse 3).
+# F-skills are not listed: the mech casts them on its own.
+#
+# Every engine tick (20x a second) the first skill in this list that the screen shows
+# as ready is pressed. Cooldowns are read from the screen, so cooldown reduction is
+# picked up automatically. While a skill casts, one more press can queue behind it.
+
+name: Power Mechanist
+
+priority: [2, 3, 4, 5, 7, 0]
+
+# Ground-targeted skills: pressed twice, this many seconds apart.
+double_tap:
+  5: 0.25
+
+# Skills that get cancelled if anything is cast over them: nothing else is pressed for
+# this many seconds after pressing it (and not until it shows its cooldown).
+no_interrupt:
+  2: 0.75

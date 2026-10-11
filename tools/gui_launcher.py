@@ -26,6 +26,7 @@ from profiles.profile_core_guardian import ProfileCoreGuardian
 from profiles.profile_charges import ProfileCharges
 from profiles.profile_mech import ProfileMech
 from profiles.configurable_profile import ConfigurableProfile
+from profiles.simple_rotation import SimpleRotationProfile, load_simple_rotation, rotation_path
 from core.rotation_parser import (
     parse_build_rotation,
     delete_build,
@@ -777,6 +778,36 @@ class ModernBotGUI:
         )
         btn_autodetect.pack(fill="x", padx=14, pady=4)
 
+        btn_fcalib = tk.Button(
+            right_panel,
+            text="🖱  Locate F-Skills (presses each)",
+            font=("Segoe UI", 9, "bold"),
+            bg="#313244",
+            fg="#f9e2af",
+            activebackground="#45475a",
+            bd=0,
+            padx=12,
+            pady=7,
+            cursor="hand2",
+            command=self.calibrate_mech_by_press
+        )
+        btn_fcalib.pack(fill="x", padx=14, pady=4)
+
+        btn_rotation_file = tk.Button(
+            right_panel,
+            text="📝  Edit Rotation File",
+            font=("Segoe UI", 9, "bold"),
+            bg="#313244",
+            fg="#cba6f7",
+            activebackground="#45475a",
+            bd=0,
+            padx=12,
+            pady=7,
+            cursor="hand2",
+            command=self.edit_rotation_file
+        )
+        btn_rotation_file.pack(fill="x", padx=14, pady=4)
+
         btn_hud = tk.Button(
             right_panel,
             text="👁  Open Live HUD Preview",
@@ -983,7 +1014,12 @@ class ModernBotGUI:
         if self.active_engine:
             self.active_engine.behaviors.clear()
             detector = self.active_engine.detector
-            profile = self._create_profile_by_name(prof, build_name)
+            try:
+                profile = self._create_profile_by_name(prof, build_name)
+            except ValueError as e:
+                self.log_message(f"[Rotation Error] {e}")
+                messagebox.showerror("Rotation Error", str(e), parent=self.root)
+                return
             profile.setup_behaviors(detector)
             for b in profile.behaviors:
                 self.active_engine.register_behavior(b)
@@ -1094,6 +1130,16 @@ class ModernBotGUI:
 
     def _create_profile_by_name(self, prof: str, build_name: str):
         spec = self.cb_elitespec.get()
+
+        # A simple rotation file for this spec (config/rotations/{profession}_{spec}.yaml) wins
+        try:
+            simple = load_simple_rotation(prof, spec)
+        except ValueError as e:
+            raise ValueError(f"Rotation file {os.path.basename(rotation_path(prof, spec))}: {e}") from e
+        if simple:
+            self.log_message(f"Using rotation file {os.path.basename(rotation_path(prof, spec))}: "
+                             f"priority {' > '.join(simple.priority)}")
+            return SimpleRotationProfile(simple, profession=prof, spec=spec)
         builds_list = self.db.get("professions", {}).get(prof, {}).get("elite_specs", {}).get(spec, {}).get("builds", [])
         target_build = None
         for b in builds_list:
@@ -1204,7 +1250,7 @@ class ModernBotGUI:
                 self.log_message(f"Engine armed in STANDBY for [{profile.name}]. Press [F9] in-game to start!")
             else:
                 self.root.after(0, self._update_status_active)
-                self.log_message(f"Engine ENGAGED for [{profile.name}]. Cadence: 250ms.")
+                self.log_message(f"Engine ENGAGED for [{profile.name}]. Cadence: {int(self.active_engine.base_tick_interval * 1000)}ms.")
 
             # Main engine loop in background thread
             while self.active_engine.running and not self.input_ctrl.is_stopped():
@@ -1250,7 +1296,15 @@ class ModernBotGUI:
             from core.hud_detector import AutoHUDDetector
             from core.dpi_utils import get_screen_resolution, bottom_center_to_absolute
             screen_w, screen_h = get_screen_resolution()
-            success, msg, bc = AutoHUDDetector.auto_calibrate_and_save(settings_path=self.settings_path)
+            success, msg, bc = AutoHUDDetector.auto_calibrate_and_save(
+                settings_path=self.settings_path,
+                profession=self.cb_profession.get() or None,
+                spec=self.cb_elitespec.get() or None,
+            )
+            if not success or not bc:
+                self.log_message(f"[Auto-Detect HUD] {msg}")
+                messagebox.showwarning("Auto-Detection Notice", msg, parent=self.root)
+                return
 
             self.settings = self._load_yaml(self.settings_path)
             if self.active_engine and hasattr(self.active_engine, "monitor") and self.active_engine.monitor:
@@ -1277,6 +1331,70 @@ class ModernBotGUI:
         except Exception as e:
             self.log_message(f"[Auto-Detect HUD Error]: {e}")
             messagebox.showerror("Auto-Detection Error", f"Failed to run auto-detection: {e}", parent=self.root)
+
+    def edit_rotation_file(self):
+        """Opens (creating if needed) config/rotations/{profession}_{spec}.yaml in the default editor."""
+        prof = self.cb_profession.get()
+        spec = self.cb_elitespec.get()
+        if not prof or not spec:
+            messagebox.showwarning("Rotation File", "Select a profession and elite spec first.", parent=self.root)
+            return
+        path = rotation_path(prof, spec)
+        if not os.path.exists(path):
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(
+                    f"# {prof} / {spec} rotation\n"
+                    "# Skill-bar numbers: 1-5 weapon, 6 heal, 7-9 utilities, 0 elite, swap = weapon swap.\n"
+                    "# Your keybinds are applied automatically.\n\n"
+                    f"name: {spec}\n\n"
+                    "# Press each skill whenever it's ready; the first listed goes first.\n"
+                    "priority: [2, 3, 4, 5]\n\n"
+                    "# Ground-targeted skills: pressed twice, this many seconds apart.\n"
+                    "double_tap: {}\n\n"
+                    "# Skills cancelled if anything is cast over them: hold this many seconds.\n"
+                    "no_interrupt: {}\n\n"
+                    "# Skills that can be pressed back-to-back (the second one queues).\n"
+                    "queue_together: []\n"
+                )
+            self.log_message(f"Created starter rotation file {os.path.basename(path)}.")
+        try:
+            os.startfile(path)
+        except Exception as e:
+            messagebox.showerror("Rotation File", f"Could not open {path}: {e}", parent=self.root)
+            return
+        self.log_message(f"Opened {os.path.basename(path)}. Save it, then re-select the build (or restart the engine) to apply.")
+
+    def calibrate_mech_by_press(self):
+        """Presses each F-skill of the selected spec and locates its slot from the cooldown overlay."""
+        prof = self.cb_profession.get()
+        spec = self.cb_elitespec.get()
+        if not prof or not spec:
+            messagebox.showwarning("Locate F-Skills", "Select a profession and elite spec first.", parent=self.root)
+            return
+        if not messagebox.askokcancel(
+            "Locate F-Skills",
+            f"This switches to Guild Wars 2 and presses each {prof} / {spec} profession skill once "
+            "(they will go on cooldown), then finds each slot by its cooldown overlay.\n\n"
+            "Target an enemy (e.g. a training golem) first so the skills can fire.\n"
+            "Press F12 to abort.",
+            parent=self.root,
+        ):
+            return
+
+        def worker():
+            from core.mech_press_calibrator import run_press_calibration
+            log = lambda m: self.root.after(0, self.log_message, m)
+            try:
+                ok, msg, _ = run_press_calibration(prof, spec, settings_path=self.settings_path, log=log)
+            except Exception as e:
+                ok, msg = False, f"F-skill calibration failed: {e}"
+            log(f"[Locate F-Skills] {msg}")
+            show = messagebox.showinfo if ok else messagebox.showwarning
+            self.root.after(0, lambda: show("Locate F-Skills", msg, parent=self.root))
+
+        self.log_message(f"[Locate F-Skills] Starting for {prof} / {spec}...")
+        threading.Thread(target=worker, daemon=True).start()
 
     def launch_hud(self):
         """Launches the read-only live preview HUD in a separate process with active duo coordinates."""

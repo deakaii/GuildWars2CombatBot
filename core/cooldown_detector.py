@@ -13,6 +13,7 @@ the universal visual shader signatures that the game applies to ANY skill slot:
 This provides 100% character-agnostic readiness detection with sub-millisecond performance.
 """
 
+import time
 from dataclasses import dataclass
 from typing import Dict, Tuple, Optional, List
 import numpy as np
@@ -28,6 +29,7 @@ class SlotCooldownStatus:
     saturation: float
     bounding_box: Tuple[int, int, int, int]  # (x, y, w, h) relative to HUD frame
     radial_wedge_sectors: int = 0
+    raw_is_ready: bool = True                 # this frame's reading before ready-confirmation
 
 
 class UniversalCooldownDetector:
@@ -166,7 +168,8 @@ class UniversalCooldownDetector:
         black_pixel_val: int = 18,
         digit_min_height: int = 10,
         digit_max_height: int = 30,
-        white_pixel_val: int = 200
+        white_pixel_val: int = 200,
+        ready_confirm_seconds: float = 0.1
     ):
         self.profession = profession.lower().strip()
         self.spec = spec.lower().strip()
@@ -175,6 +178,12 @@ class UniversalCooldownDetector:
         self.digit_min_height = digit_min_height
         self.digit_max_height = digit_max_height
         self.white_pixel_val = white_pixel_val
+
+        # Ready-confirmation: near the end of a cooldown the remaining dark wedge is small
+        # and single frames can read as READY, flickering green/red. A slot only reports
+        # READY after reading ready continuously for this long; COOLDOWN applies at once.
+        self.ready_confirm_seconds = ready_confirm_seconds
+        self._last_cooldown_seen: Dict[str, float] = {}
 
         # Dynamic active slot map
         self.slots = dict(self.NORMALIZED_SLOTS)
@@ -371,30 +380,7 @@ class UniversalCooldownDetector:
         # -------------------------------------------------------------
         # 3. Centered White Countdown Digits
         # -------------------------------------------------------------
-        num_region = inner[int(ih * 0.16):int(ih * 0.68), int(iw * 0.22):int(iw * 0.78)]
-        nw_h, nw_w = num_region.shape[:2]
-        white_mask = (
-            (num_region[:, :, 0] > self.white_pixel_val) &
-            (num_region[:, :, 1] > self.white_pixel_val) &
-            (num_region[:, :, 2] > self.white_pixel_val)
-        )
-
-        digit_detected = False
-        # Digits only appear over dimmed / darkened backgrounds
-        if overall_dark >= 0.15 or sat_mean < 65.0:
-            num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(white_mask.astype(np.uint8))
-            for i in range(1, num_labels):
-                comp_w = stats[i, cv2.CC_STAT_WIDTH]
-                comp_h = stats[i, cv2.CC_STAT_HEIGHT]
-                comp_area = stats[i, cv2.CC_STAT_AREA]
-                cx_c = centroids[i][0]
-                dist_c = abs(cx_c - nw_w / 2.0)
-
-                # Cooldown digit criteria: proper dimensions and centered in slot
-                if (self.digit_min_height <= comp_h <= self.digit_max_height and
-                        3 <= comp_w <= 26 and comp_area >= 18 and dist_c < (nw_w * 0.38)):
-                    digit_detected = True
-                    break
+        digit_detected = self._countdown_digits_present(crop)
 
         # -------------------------------------------------------------
         # 4. Universal Cooldown Logic (Radial Clock Model)
@@ -402,12 +388,14 @@ class UniversalCooldownDetector:
         # A skill is on cooldown if:
         # 1. White countdown numbers are visible in the center (digit_detected)
         # 2. OR It exhibits a contiguous black radial wedge of at least 3 sectors
-        #    (>= 90 degrees of unbroken solid black clockwise sweep) with overall dark >= 30%
+        #    (>= 90 degrees of unbroken solid black clockwise sweep) with overall dark >= 30%,
+        #    on a washed-out icon (sat < 60): ready icons with large black art areas
+        #    (e.g. a rocket silhouette) otherwise match; real overlays measured sat ~7
         # 3. OR Full blackout upon skill activation (overall_dark >= 0.55 and sat_mean < 70)
         # 4. OR Moderate dark coverage with heavily drained saturation (overall_dark >= 0.35 and sat_mean < 45)
         is_on_cooldown = (
             digit_detected or
-            (max_contig_sectors >= 3 and overall_dark >= 0.30) or
+            (max_contig_sectors >= 3 and overall_dark >= 0.30 and sat_mean < 60.0) or
             (overall_dark >= 0.55 and sat_mean < 70.0) or
             (overall_dark >= 0.35 and sat_mean < 45.0)
         )
@@ -422,29 +410,80 @@ class UniversalCooldownDetector:
             radial_wedge_sectors=max_contig_sectors
         )
 
-    def get_slot_status(self, hud_frame: np.ndarray, slot_id: str) -> Optional[SlotCooldownStatus]:
+    def _countdown_digits_present(self, crop: np.ndarray) -> bool:
+        """
+        Detects the white cooldown timer ("19", "4.8", "0.2") anywhere in the slot.
+
+        Checked on every frame with no darkness/saturation gating, so the timer is seen to the
+        very end of a cooldown even on icons whose art is green, yellow, etc. (late in a cooldown
+        only a thin dark wedge remains). White artwork is rejected because timer text has a dark
+        outline while artwork (e.g. a white mask) does not. Sizes are relative to the slot so
+        this scales with resolution and UI size. The keybind label at the bottom is excluded.
+        """
+        h, w = crop.shape[:2]
+        region = crop[int(h * 0.12):int(h * 0.80), int(w * 0.12):int(w * 0.88)]
+        if region.size == 0:
+            return False
+        rw = region.shape[1]
+        white = (region.min(axis=2) > 185).astype(np.uint8)
+        value = region.max(axis=2)
+        chroma = value.astype(np.int16) - region.min(axis=2).astype(np.int16)
+        n, labels, stats, cents = cv2.connectedComponentsWithStats(white)
+        kernel = np.ones((3, 3), np.uint8)
+        for i in range(1, n):
+            cw, ch, area = stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT], stats[i, cv2.CC_STAT_AREA]
+            if not (0.18 * h <= ch <= 0.6 * h and 0.04 * w <= cw <= 0.45 * w
+                    and area >= 0.008 * h * w and abs(cents[i][0] - rw / 2.0) < rw * 0.45):
+                continue
+            # Timer text is neutral white thin strokes (tint <= ~15, fill <= ~0.57 measured);
+            # bright artwork such as a flame core is tinted and solid
+            if area / float(cw * ch) > 0.62:
+                continue
+            comp = (labels == i).astype(np.uint8)
+            if chroma[comp.astype(bool)].mean() > 20:
+                continue
+            ring = (cv2.dilate(comp, kernel) - comp).astype(bool)
+            if (value[ring] < 70).mean() >= 0.05 or np.median(value[ring]) < 170:
+                return True
+        return False
+
+    def get_slot_status(
+        self, hud_frame: np.ndarray, slot_id: str, now: Optional[float] = None
+    ) -> Optional[SlotCooldownStatus]:
         """Evaluates readiness of a specific slot from the HUD frame."""
         resolved = self.resolve_slot_id(slot_id)
         rect = self.get_slot_rect(hud_frame.shape[:2], resolved)
         if not rect:
             return None
 
+        now = time.monotonic() if now is None else now
         x, y, w, h = rect
         crop = hud_frame[y:y+h, x:x+w]
         status = self.evaluate_slot_crop(crop, resolved)
         status.bounding_box = (x, y, w, h)
+        status.raw_is_ready = status.is_ready
+        status.is_ready = self._confirm_ready(resolved, status.is_ready, now)
         return status
+
+    def _confirm_ready(self, slot_id: str, raw_ready: bool, now: Optional[float] = None) -> bool:
+        """Applies ready-confirmation: READY only after ready_confirm_seconds without a cooldown reading."""
+        now = time.monotonic() if now is None else now
+        if not raw_ready:
+            self._last_cooldown_seen[slot_id] = now
+            return False
+        last_cd = self._last_cooldown_seen.get(slot_id)
+        return last_cd is None or (now - last_cd) >= self.ready_confirm_seconds
 
     def is_slot_ready(self, hud_frame: np.ndarray, slot_id: str) -> bool:
         """Returns True if the slot is ready to be cast; False if on cooldown."""
         status = self.get_slot_status(hud_frame, slot_id)
         return status.is_ready if status else True
 
-    def get_all_slot_statuses(self, hud_frame: np.ndarray) -> Dict[str, SlotCooldownStatus]:
+    def get_all_slot_statuses(self, hud_frame: np.ndarray, now: Optional[float] = None) -> Dict[str, SlotCooldownStatus]:
         """Evaluates readiness across all registered slots on the action bar."""
         results = {}
-        for s_id in self.slots.keys():
-            st = self.get_slot_status(hud_frame, s_id)
+        for s_id in list(self.slots.keys()):
+            st = self.get_slot_status(hud_frame, s_id, now)
             if st:
                 results[s_id] = st
         return results

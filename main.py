@@ -63,7 +63,8 @@ def main():
     parser.add_argument("--calibrate-bar", action="store_true", help="Launch interactive action bar equidistant grid calibrator")
     parser.add_argument("--auto-detect-hud", action="store_true", help="Automatically detect GW2 action bar and configure settings.yaml")
     parser.add_argument("--hud", action="store_true", help="Launch live diagnostic HUD window (read-only)")
-    parser.add_argument("--profile", default="auto", help="Active character profile ('auto', 'mech', 'charges', 'guardian', etc.)")
+    parser.add_argument("--calibrate-mech", action="store_true", help="Press each F-skill once and locate its slot from the cooldown overlay (needs --profession and --spec)")
+    parser.add_argument("--profile", default="auto", help="Active character profile: 'auto', a 1-based index, or a name ('core guardian dps', 'mechengineer', 'power mechanist', 'chargecharacter')")
     parser.add_argument("--profession", default=None, help="Profession for HUD or engine (e.g. Guardian, Engineer)")
     parser.add_argument("--spec", default=None, help="Specialization for HUD or engine (e.g. Core, Mechanist)")
     parser.add_argument("--config", default="config/settings.yaml", help="Path to YAML settings file")
@@ -96,6 +97,17 @@ def main():
         app.run()
         return
 
+    if args.calibrate_mech:
+        if not (args.profession and args.spec):
+            print("--calibrate-mech needs --profession and --spec (e.g. --profession Engineer --spec Mechanist)")
+            sys.exit(1)
+        from core.mech_press_calibrator import run_press_calibration
+        print("Pressing each profession skill once in 3 seconds (F12 aborts). Target an enemy first.")
+        time.sleep(3)
+        ok, msg, _ = run_press_calibration(args.profession, args.spec, settings_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), args.config))
+        print(msg)
+        sys.exit(0 if ok else 1)
+
     if args.hud:
         from tools.live_hud import run_live_hud
         run_live_hud(config_path=args.config, profession=args.profession, spec=args.spec)
@@ -118,15 +130,20 @@ def main():
     from profiles.profile_mech import ProfileMech
     from profiles.profile_charges import ProfileCharges
     from profiles.profile_core_guardian import ProfileCoreGuardian
+    from profiles.profile_power_mechanist import ProfilePowerMechanist
 
     profile_mgr = ProfileManager(detector)
     profile_mgr.register_profile(ProfileCoreGuardian())
     profile_mgr.register_profile(ProfileMech())
+    profile_mgr.register_profile(ProfilePowerMechanist())
     profile_mgr.register_profile(ProfileCharges())
 
     # Auto-detect or select requested profile
     if args.profile.lower() != "auto":
-        profile_mgr.set_active_profile(args.profile)
+        if not profile_mgr.set_active_profile(args.profile):
+            names = ", ".join(f"'{p.name}'" for p in profile_mgr.profile_list)
+            print(f"[Engine] Unknown profile '{args.profile}'. Available: {names}")
+            sys.exit(1)
     else:
         # Grab initial frame to auto-detect character from mechanic zone
         initial_frame = monitor.grab_frame()

@@ -8,6 +8,12 @@ Verifies:
 import unittest
 import numpy as np
 import cv2
+import os
+import sys
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from core.cooldown_detector import UniversalCooldownDetector
 from core.resource_detector import UniversalResourceDetector
 
@@ -165,6 +171,64 @@ class TestLiveHUD(unittest.TestCase):
         triggered = engine.run_tick()
         self.assertIsNone(triggered, "Engine tick must return None and do nothing when game is not focused")
         mock_monitor.grab_frame.assert_not_called()
+
+
+class TestReadyConfirmation(unittest.TestCase):
+    """End-of-cooldown flicker (single READY frames) must not report READY early."""
+
+    def test_flicker_suppressed_until_confirmed(self):
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        raw = [0, 1, 0, 1, 1, 0, 1, 0, 1] + [1] * 20   # 30 fps readings, last CD at frame 7
+        reported = [det._confirm_ready("weapon_1", bool(r), now=i / 30.0) for i, r in enumerate(raw)]
+        first_ready = reported.index(True)
+        self.assertFalse(any(reported[:first_ready]))
+        self.assertTrue(all(reported[first_ready:]))
+        self.assertGreaterEqual((first_ready - 7) / 30.0, det.ready_confirm_seconds - 1e-9)
+
+    def test_cooldown_applies_immediately_and_fresh_slot_is_ready(self):
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        self.assertTrue(det._confirm_ready("heal", True, now=0.0))
+        self.assertFalse(det._confirm_ready("heal", False, now=0.1))
+
+
+class TestLateCooldownOnRealFrames(unittest.TestCase):
+    """Real Mechanist frames: late-cooldown timers on green/black art, and white artwork on a ready icon."""
+
+    FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "cooldown")
+
+    def _img(self, name):
+        img = cv2.imread(os.path.join(self.FIX, name))
+        self.assertIsNotNone(img, name)
+        return img
+
+    def test_timer_seen_until_the_end_of_cooldown(self):
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        for name in ("f2_cd_3.1s.png", "f2_cd_1.5s.png", "f2_cd_0.8s.png", "f2_cd_0.2s.png"):
+            st = det.evaluate_slot_crop(self._img(name), "mech_f2")
+            self.assertTrue(st.digit_detected, f"{name}: timer digits must be detected")
+            self.assertFalse(st.is_ready, f"{name} must read as cooldown")
+        self.assertTrue(det.evaluate_slot_crop(self._img("f2_ready.png"), "mech_f2").is_ready)
+
+    def test_colorful_icon_timer_seen_late_in_cooldown(self):
+        # Weapon 2 (yellow art): timer at 2.6s / 1.2s was missed when gated on wash-out
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        for name in ("w2_cd_2.6s.png", "w2_cd_1.2s.png"):
+            self.assertFalse(det.evaluate_slot_crop(self._img(name), "weapon_2").is_ready, name)
+
+    def test_ready_icon_with_flame_and_black_art_is_ready(self):
+        # Weapon 5 rocket: white-hot flame core (tinted, solid) and large black silhouette
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        for name in ("w5_ready_flame_a.png", "w5_ready_flame_b.png"):
+            st = det.evaluate_slot_crop(self._img(name), "weapon_5")
+            self.assertFalse(st.digit_detected, name)
+            self.assertTrue(st.is_ready, name)
+
+    def test_white_artwork_on_ready_icon_is_not_a_timer(self):
+        det = UniversalCooldownDetector(profession="engineer", spec="mechanist")
+        for name in ("w1_ready_white_mask.png", "w1_ready_ref.png"):
+            st = det.evaluate_slot_crop(self._img(name), "weapon_1")
+            self.assertFalse(st.digit_detected, name)
+            self.assertTrue(st.is_ready, name)
 
 
 if __name__ == "__main__":

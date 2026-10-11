@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.capture import ScreenMonitor
 from core.detector import VisualDetector
 from core.dpi_utils import enable_dpi_awareness, get_screen_resolution
-from core.window_utils import is_gw2_focused, is_gw2_process_running, get_foreground_window_info
+from core.window_utils import find_gw2_window, user32
 
 
 def run_live_hud(config_path: str = "config/settings.yaml", profession: str = None, spec: str = None):
@@ -37,8 +37,6 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
 
     region_cfg = cfg.get("region", {})
     behavior_cfg = cfg.get("behavior_one", {})
-    ctrl_cfg = cfg.get("control", cfg.get("safety", {}))
-    require_game_focus = bool(ctrl_cfg.get("require_game_focus", True))
     template_name = behavior_cfg.get("template_filename", "trigger_icon.png")
     threshold = float(behavior_cfg.get("confidence_threshold", 0.82))
 
@@ -52,9 +50,9 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
     print("  LIVE DIAGNOSTIC HUD (READ-ONLY MONITORING)")
     print(f"  - Active Duo: [{profession.upper()} | {spec.upper()}]")
     print(f"  - Screen Resolution: {screen_w}x{screen_h}")
-    print(f"  - Exclusive Target: Guild Wars 2 (Gw2-64.exe) [Focus Guard: {'ACTIVE' if require_game_focus else 'OFF'}]")
+    print("  - Target: Guild Wars 2 window (captured even when another window is focused)")
     print(f"  - Target Template: {template_name} (Threshold: {threshold})")
-    print("  - Keys: [A] Auto-Detect HUD | [S] Snapshot | [R] Reload | [F] Toggle Focus Lock | [Q] Exit")
+    print("  - Keys: [A] Auto-Detect HUD | [S] Snapshot | [R] Reload | [Q] Exit")
     print("=" * 60 + "\n")
 
     monitor = ScreenMonitor(region_cfg)
@@ -67,25 +65,37 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
     last_cfg_check = 0.0
     fps = 0.0
     last_valid_frame = None
+    gw2_hwnd = 0
+    last_window_lookup = 0.0
 
     try:
         while True:
             now = time.perf_counter()
 
             # -------------------------------------------------------------
-            # Exclusive Target Guard: Guild Wars 2 Process & Focus Check
+            # Guild Wars 2 Window Capture (works whichever window is focused)
             # -------------------------------------------------------------
-            gw2_focused = is_gw2_focused() if require_game_focus else True
+            if not gw2_hwnd or not user32.IsWindow(gw2_hwnd) or now - last_window_lookup > 2.0:
+                gw2_hwnd = find_gw2_window()
+                last_window_lookup = now
 
-            if require_game_focus and not gw2_focused:
-                # Game is tabbed out, minimized, or not running.
-                # Do NOT scrape desktop pixels or run detection over other apps.
-                gw2_running = is_gw2_process_running()
-                fg_info = get_foreground_window_info()
-                fg_name = fg_info.get("exe") or fg_info.get("title") or "Desktop / Other App"
-                if len(fg_name) > 36:
-                    fg_name = fg_name[:33] + "..."
+            frame, capture_source = None, ""
+            if not gw2_hwnd:
+                standby = ("WAITING FOR GUILD WARS 2",
+                           "Guild Wars 2 (Gw2-64.exe) is not running.",
+                           "The live HUD starts automatically once the game window opens.")
+            elif user32.IsIconic(gw2_hwnd):
+                standby = ("GUILD WARS 2 IS MINIMIZED",
+                           "A minimized window has nothing to capture.",
+                           "Restore the game window (it can stay behind other windows).")
+            else:
+                frame, capture_source = monitor.grab_game_frame(gw2_hwnd)
+                standby = None if frame is not None else (
+                    "CAN'T CAPTURE GUILD WARS 2",
+                    "The game is covered and Windows returned a blank image.",
+                    "Set Graphics Options > Display Mode to Windowed Fullscreen, or bring GW2 to the front.")
 
+            if standby is not None:
                 # Construct dimmed or dark standby canvas
                 if last_valid_frame is not None:
                     display = (last_valid_frame.astype(np.float32) * 0.22).astype(np.uint8)
@@ -98,7 +108,7 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
 
                 # Center Standby Modal Card
                 card_w = min(int(w * 0.88), 640)
-                card_h = min(int(h * 0.72), 160)
+                card_h = min(int(h * 0.72), 140)
                 card_x = max(10, (w - card_w) // 2)
                 card_y = max(10, (h - card_h) // 2)
 
@@ -107,22 +117,11 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                 cv2.addWeighted(overlay, 0.88, display, 0.12, 0, display)
                 cv2.rectangle(display, (card_x, card_y), (card_x + card_w, card_y + card_h), (0, 180, 240), 2)
 
-                title_text = "PAUSED -- WAITING FOR GUILD WARS 2 FOCUS"
+                title_text, sub_1, sub_2 = standby
                 cv2.putText(display, title_text, (card_x + 18, card_y + 32), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (0, 215, 255), 2)
-
-                if gw2_running:
-                    sub_1 = f"Gw2-64.exe running in background | Active: {fg_name}"
-                    sub_2 = "Perception suspended to prevent false detections on non-game windows."
-                    sub_3 = "Click or Alt-Tab back into Guild Wars 2 to resume live HUD."
-                else:
-                    sub_1 = "Guild Wars 2 process (Gw2-64.exe) not running."
-                    sub_2 = "Visual perception paused until Guild Wars 2 is launched."
-                    sub_3 = "Waiting for game process to start..."
-
-                cv2.putText(display, sub_1, (card_x + 18, card_y + 60), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (210, 210, 210), 1)
-                cv2.putText(display, sub_2, (card_x + 18, card_y + 84), cv2.FONT_HERSHEY_SIMPLEX, 0.36, (160, 160, 170), 1)
-                cv2.putText(display, sub_3, (card_x + 18, card_y + 110), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (100, 230, 120), 1)
-                cv2.putText(display, "[F] Toggle Focus Guard  |  [Q] Exit", (card_x + 18, card_y + 138), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (130, 130, 140), 1)
+                cv2.putText(display, sub_1, (card_x + 18, card_y + 62), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (210, 210, 210), 1)
+                cv2.putText(display, sub_2, (card_x + 18, card_y + 88), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (100, 230, 120), 1)
+                cv2.putText(display, "[Q] Exit", (card_x + 18, card_y + 118), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (130, 130, 140), 1)
 
                 header_h = 24
                 footer_h = 24
@@ -130,8 +129,7 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
 
                 # Top Header Bar
                 canvas[0:header_h, :] = (20, 20, 24)
-                gw2_state_str = "BACKGROUND" if gw2_running else "NOT RUNNING"
-                duo_text = f"TARGET: GUILD WARS 2 ({gw2_state_str}) | FOCUS GUARD: ACTIVE | [{profession.upper()} > {spec.upper()}]"
+                duo_text = f"TARGET: GUILD WARS 2 | [{profession.upper()} > {spec.upper()}]"
                 cv2.putText(canvas, duo_text, (8, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (0, 215, 255), 1)
 
                 # Center Frame
@@ -139,26 +137,13 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
 
                 # Bottom Footer Bar
                 canvas[header_h + h :, :] = (24, 24, 28)
-                status_text = "STATE: STANDBY (Game Tabbed Out -- Exclusive GW2 Focus Active)"
-                cv2.putText(canvas, status_text, (8, header_h + h + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 180, 240), 1)
+                cv2.putText(canvas, f"STATE: STANDBY ({title_text.title()})", (8, header_h + h + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (0, 180, 240), 1)
 
                 cv2.imshow(window_name, canvas)
 
-                key = cv2.waitKey(90) & 0xFF
+                key = cv2.waitKey(250) & 0xFF
                 if key in [ord("q"), ord("Q"), 27]:
                     break
-                if key in [ord("f"), ord("F")]:
-                    require_game_focus = False
-                    print("[HUD] Focus Guard toggled: OFF (Monitoring desktop regardless of active window)")
-                elif key in [ord("a"), ord("A")]:
-                    from core.skill_detector import ActionSkillDetector
-                    success, msg, data = ActionSkillDetector.auto_calibrate_and_save(settings_path=full_config_path)
-                    print(f"[HUD] Auto-Detect: {msg}")
-                    if success and "region" in data:
-                        monitor.update_roi(data["region"])
-                        cd_det.load_calibrated_slots(full_config_path)
-                        res_det.configure(profession=profession, spec=spec)
-                        last_cfg_check = 0.0
                 try:
                     if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                         break
@@ -166,10 +151,6 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                     pass
                 continue
 
-            # -------------------------------------------------------------
-            # Active Guild Wars 2 Frame Capture & Processing
-            # -------------------------------------------------------------
-            frame = monitor.grab_frame()
             last_valid_frame = frame.copy()
 
             dt = now - prev_time
@@ -276,7 +257,7 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
             # Build telemetry strings
             mech_count = len([k for k in slot_statuses.keys() if k.startswith("mech_")])
             res_tag = f" | {res_state.resource_name.upper()}: {int(res_state.current_value)}/{int(res_state.max_value)}" if res_state.resource_type != "none" else ""
-            focus_tag = "GW2 ACTIVE" if require_game_focus else "GUARD OFF"
+            focus_tag = "SRC: SCREEN" if capture_source == "screen" else "SRC: GW2 WINDOW (covered)"
             duo_text = f"DUO: [{profession.upper()} | {spec.upper()}]{res_tag} ({mech_count} Mechanics) | {focus_tag} | FPS: {fps:.0f} | Latency: {monitor.last_latency_ms:.1f}ms"
 
             # Render onto dedicated outer canvas so the captured game HUD is 100% visible and unclipped
@@ -305,16 +286,15 @@ def run_live_hud(config_path: str = "config/settings.yaml", profession: str = No
                     break
             except Exception:
                 pass
-            if key in [ord("f"), ord("F")]:
-                require_game_focus = not require_game_focus
-                state_str = "ON (Exclusive GW2 Focus Enforced)" if require_game_focus else "OFF (Desktop Monitoring)"
-                print(f"[HUD] Focus Guard toggled: {state_str}")
-            elif key in [ord("a"), ord("A")]:
+            if key in [ord("a"), ord("A")]:
                 from core.skill_detector import ActionSkillDetector
-                success, msg, data = ActionSkillDetector.auto_calibrate_and_save(settings_path=full_config_path)
+                success, msg, data = ActionSkillDetector.auto_calibrate_and_save(
+                        settings_path=full_config_path, profession=profession, spec=spec
+                    )
                 print(f"[HUD] Auto-Detect: {msg}")
                 if success and "region" in data:
                     monitor.update_roi(data["region"])
+                    cd_det.set_composite(profession, spec)  # reload spec (may have new F-slots)
                     cd_det.load_calibrated_slots(full_config_path)
                     res_det.configure(profession=profession, spec=spec)
                     last_cfg_check = 0.0

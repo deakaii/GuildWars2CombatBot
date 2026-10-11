@@ -45,9 +45,6 @@ class InputController:
         self.mod_pre_range = stealth_config.get("modifier_pre_delay_range", [0.018, 0.048])
         self.mod_post_range = stealth_config.get("modifier_post_delay_range", [0.012, 0.036])
 
-        # Rotation Effectiveness & Human Imperfection Model (85% effectiveness)
-        self.rotation_effectiveness = float(stealth_config.get("rotation_effectiveness", 0.85))
-        self.imperfection_cfg = stealth_config.get("imperfection_behaviors", {})
         self.last_pressed_action: Optional[str] = None
 
         # Game Window Focus Guard: Blocks inputs if user tabs away to IDE or browser
@@ -217,11 +214,11 @@ class InputController:
             return True
         return is_target_game_focused()
 
-    def press_key(self, raw_input: str, double_tap: bool = False) -> bool:
+    def press_key(self, raw_input: str, double_tap: bool = False, double_tap_gap: Optional[float] = None) -> bool:
         """
-        Sends hardware input with humanized timing, modifier wiggle room,
-        and an 85% rotation effectiveness model introducing natural human imperfections.
-        If double_tap=True, executes a 100% reliable ground-target double-tap (Tap 1 to open/snap, Tap 2 to set).
+        Sends a keyboard/mouse input, translated through the user's keybind map.
+        If double_tap=True, executes a ground-target double-tap (Tap 1 to open/snap, Tap 2 to set).
+        double_tap_gap sets the seconds between the two taps (default 55-75 ms).
         """
         if self.is_stopped():
             return False
@@ -246,7 +243,6 @@ class InputController:
         try:
             # -------------------------------------------------------------
             # Ground-Target Double-Tap Mode (e.g. Sword of Justice, Symbol of Punishment)
-            # 100% Reliable: Bypasses imperfection slips to guarantee ground attack lands!
             # Tap 1: Trigger reticle / snap to target
             # Tap 2: Confirm placement and cast attack (prevents stuck animation)
             # -------------------------------------------------------------
@@ -255,8 +251,11 @@ class InputController:
                 tap1_hold = random.uniform(0.052, 0.068)
                 self._execute_low_level(target_action, tap1_hold)
                 
-                # Discrete inter-tap delay for GW2 input buffer to acknowledge reticle (55ms - 75ms)
-                time.sleep(random.uniform(0.055, 0.075))
+                # Inter-tap delay for GW2 input buffer to acknowledge reticle
+                if double_tap_gap is not None:
+                    time.sleep(max(0.0, float(double_tap_gap)))
+                else:
+                    time.sleep(random.uniform(0.055, 0.075))
                 
                 tap2_hold = random.uniform(0.050, 0.065)
                 res = self._execute_low_level(target_action, tap2_hold)
@@ -264,37 +263,6 @@ class InputController:
                     self.last_pressed_action = target_action
                 return res
 
-            # -------------------------------------------------------------
-            # Human Imperfection Model (Simulates ~15% human error / slips)
-            # -------------------------------------------------------------
-            if self.imperfection_cfg.get("enabled", True) and random.random() > self.rotation_effectiveness:
-                error_roll = random.random()
-
-                # 1. Double-Tap / Rapid Re-press (Button Mash error) ~40% of slips
-                if error_roll < 0.40:
-                    print(f"  [HUMAN JITTER] Double-tapping '{target_action}' (button mash emulation)")
-                    self._execute_low_level(target_action, hold_time)
-                    # Quick realistic finger gap (32ms - 65ms)
-                    time.sleep(random.uniform(0.032, 0.065))
-                    self._execute_low_level(target_action, hold_time * 0.8)
-                    self.last_pressed_action = target_action
-                    return True
-
-                # 2. Fat-Finger Slip (Presses auto-attack '1' or previous key) ~35% of slips
-                elif error_roll < 0.75:
-                    slip_key = self.last_pressed_action if self.last_pressed_action else "1"
-                    print(f"  [HUMAN JITTER] Slip / Fat-finger: pressed '{slip_key}' instead of '{target_action}'")
-                    self._execute_low_level(slip_key, hold_time)
-                    return True
-
-                # 3. Hesitation / Micro-Distraction ~25% of slips
-                else:
-                    hesitation = random.uniform(0.12, 0.22)
-                    print(f"  [HUMAN JITTER] Reaction hesitation (+{hesitation * 1000:.0f}ms micro-pause before '{target_action}')")
-                    time.sleep(hesitation)
-                    # Falls through to normal execution
-
-            # Standard 85% clean execution
             res = self._execute_low_level(target_action, hold_time)
             if res:
                 self.last_pressed_action = target_action

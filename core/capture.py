@@ -83,6 +83,35 @@ class ScreenMonitor:
         self.last_latency_ms = (time.perf_counter() - t0) * 1000.0
         return frame_bgr
 
+    def grab_game_frame(self, hwnd: int) -> Tuple[Optional[np.ndarray], str]:
+        """
+        Captures the ROI from the Guild Wars 2 window regardless of which window is focused.
+        Uses the fast screen grab when nothing covers the ROI; otherwise renders the game
+        window directly (slower, ~100ms+). Returns (frame, "screen" | "window"), or
+        (None, "blocked") if the game can't be captured (minimized or blank render).
+        """
+        from core.window_utils import is_region_unobstructed, capture_window_client, get_client_origin
+
+        x, y, w, h = self.get_roi_bounds()
+        if is_region_unobstructed(hwnd, x, y, w, h):
+            return self.grab_frame(), "screen"
+
+        t0 = time.perf_counter()
+        img = capture_window_client(hwnd)
+        if img is None:
+            return None, "blocked"
+        ox, oy = get_client_origin(hwnd)
+        cx, cy = x - ox, y - oy
+        crop = img[max(0, cy):cy + h, max(0, cx):cx + w]
+        if crop.shape[0] != h or crop.shape[1] != w:
+            # ROI extends past the game window: pad so downstream slot math keeps its coordinates
+            padded = np.zeros((h, w, 3), dtype=np.uint8)
+            padded[max(0, -cy):max(0, -cy) + crop.shape[0], max(0, -cx):max(0, -cx) + crop.shape[1]] = crop
+            crop = padded
+        self.last_capture_time = time.time()
+        self.last_latency_ms = (time.perf_counter() - t0) * 1000.0
+        return crop, "window"
+
     def close(self) -> None:
         """Release screen capture resources."""
         if self.sct:

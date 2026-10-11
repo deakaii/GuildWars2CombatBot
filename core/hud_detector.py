@@ -157,7 +157,9 @@ class AutoHUDDetector:
     def auto_calibrate_and_save(
         cls,
         frame: Optional[np.ndarray] = None,
-        settings_path: Optional[str] = None
+        settings_path: Optional[str] = None,
+        profession: Optional[str] = None,
+        spec: Optional[str] = None
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Captures screen (or takes frame), detects HUD and exact skill squares, and saves to settings.yaml.
@@ -165,22 +167,26 @@ class AutoHUDDetector:
         enable_dpi_awareness()
         screen_w, screen_h = get_screen_resolution()
 
+        from core.skill_detector import ActionSkillDetector
+
         if frame is None:
-            import mss
-            with mss.MSS() as sct:
-                monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
-                raw = sct.grab(monitor)
-                frame = cv2.cvtColor(np.array(raw, dtype=np.uint8), cv2.COLOR_BGRA2BGR)
+            frame, error = ActionSkillDetector.capture_game_frame()
+            if frame is None:
+                return False, error, {}
 
         # Primary: Use high-precision ActionSkillDetector to lock orb and all 10 square slots
-        from core.skill_detector import ActionSkillDetector
-        success, msg, data = ActionSkillDetector.auto_calibrate_and_save(frame=frame, settings_path=settings_path)
+        success, msg, data = ActionSkillDetector.auto_calibrate_and_save(
+            frame=frame, settings_path=settings_path, profession=profession, spec=spec
+        )
         if success and "region" in data:
             return True, msg, data["region"]
 
         # Fallback: Detect health orb and calculate default aspect-ratio bounds
         res = cls.detect_hud_from_image(frame)
         bc = res["bottom_center"]
+        if not res["success"]:
+            # Don't overwrite a previous good calibration with a guessed region
+            return False, f"{msg} Existing settings were left unchanged.", {}
 
         if not settings_path:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

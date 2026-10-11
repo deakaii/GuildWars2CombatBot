@@ -1,6 +1,17 @@
 # Screen Monitoring & Prioritization Logic Loop 🎯
 
-An extensible, undetectable automation engine designed for 3D Windows and DirectX applications. It monitors a designated region of your screen, evaluates prioritized behaviors at a configurable cadence (~500ms), and executes humanized hardware-level inputs safely.
+An extensible screen-monitoring and input-validation engine for Windows desktop applications. It monitors a designated region of your screen, evaluates prioritized behaviors at a configurable cadence (~250ms), and sends keyboard inputs with start/stop/emergency-stop controls.
+
+---
+
+## 🔧 Setup
+
+Requires Python 3.11 or 3.12 (wheels for some dependencies may lag on 3.14). Do not copy `.venv` between machines; rebuild it:
+```powershell
+cd GuildWars2CombatBot
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
 ---
 
@@ -8,9 +19,9 @@ An extensible, undetectable automation engine designed for 3D Windows and Direct
 
 ### 1. Launch the Modern Graphical Dashboard (Recommended)
 ```powershell
-cd screen_monitor_bot
 .\.venv\Scripts\python.exe main.py --gui
 ```
+Or double-click `run_gui.bat`.
 - Features a **Profession / Elite Spec / Build** dropdown tree (covering all 9 Professions and 36 Elite Specs).
 - Loads rotation priorities, keybinds, and cooldowns dynamically (default test build: **Engineer -> Mechanist -> Power Mechanist**).
 - Direct buttons for **Start Bot (F9)**, **Pause (F10)**, **Open Live HUD**, and **Calibrate Region**.
@@ -41,7 +52,8 @@ python main.py --hud
 ```powershell
 python main.py
 ```
-- Monitors the calibrated ROI every ~250ms (with micro-jitter to prevent periodic pattern detection).
+- Monitors the calibrated ROI every ~250ms.
+- Select a profile with `--profile "power mechanist"` (or a 1-based index). An unknown name exits with the list of available profiles.
 - When your visual cue is detected and its cooldown has elapsed, it dispatches the configured DirectInput key press (`'1'`).
 
 #### 🎮 Macro Controls & State Management:
@@ -59,19 +71,16 @@ python main.py
 
 To ensure this works consistently across different monitors, resolutions (1080p, 1440p, 4K), and Windows DPI scaling (100%, 125%, 150%):
 1. **Per-Monitor DPI Awareness**: The engine calls Windows `SetProcessDpiAwareness(2)` to interact with physical device pixels rather than blurry virtualized pixels.
-2. **Normalized Relative Coordinates**: When you calibrate with `calibrate_roi.py`, it calculates normalized ratios (`0.0` to `1.0` of screen width and height). If you move the configuration to a 1440p or 4K monitor, the ROI automatically scales to the corresponding physical coordinates on that display!
+2. **Normalized Relative Coordinates**: When you calibrate with `main.py --calibrate` (`tools/calibrate_roi.py`), it calculates normalized ratios (`0.0` to `1.0` of screen width and height). If you move the configuration to a 1440p or 4K monitor, the ROI automatically scales to the corresponding physical coordinates on that display!
 3. **Multi-Scale Template Matching**: Reference templates are matched across dynamic scale pyramids (`0.8x` to `1.25x`), detecting the target icon even if the game's UI is scaled slightly differently across resolutions.
 
 ---
 
-## 🛡️ Anti-Detection & Stealth Design
+## 🧩 How It Works
 
-1. **Zero Memory Injection**: Operates 100% externally using passive Windows desktop duplication / `mss`. It never accesses game memory, attaches debuggers, or hooks game DLLs.
-2. **Hardware DirectInput Scan Codes**: Uses Windows `SendInput` with `KEYEVENTF_SCANCODE` via `pydirectinput`, generating identical low-level scan codes to physical keyboards.
-3. **Humanized Micro-Jitter**:
-   - Random key hold duration: 52ms – 88ms (simulating physical switch travel).
-   - Reaction time latency: 30ms – 75ms randomized delay before dispatching.
-   - Fuzzy cooldown margins (+/- 5%) so actions never trigger on exact millisecond intervals.
+1. **Screen capture only**: Reads pixels with `mss`. It does not read or modify the target application's memory.
+2. **Input**: Sends key presses through `pydirectinput` (Windows `SendInput` scan codes), translated through `config/keybinds.yaml`.
+3. **Focus guard**: With `control.require_game_focus: true`, no input is sent unless the target window is in the foreground.
 
 ---
 
@@ -113,6 +122,6 @@ The engine automatically sorts all behaviors by priority and ensures high-priori
 
 ## 🧪 Running Automated Tests
 ```powershell
-python tests/test_pipeline.py
+Get-ChildItem tests\test_*.py | ForEach-Object { .\.venv\Scripts\python.exe $_.FullName }
 ```
-Validates DPI awareness, screen capture latency, multi-scale template matching, priority hierarchy evaluation, and the emergency kill switch.
+`tests/test_pipeline.py` validates DPI awareness, screen capture latency, multi-scale template matching, priority hierarchy evaluation, and the emergency kill switch. The other files cover the rotation parser, resource/skill detectors, HUD auto-detection, and per-resolution spec files.
