@@ -236,6 +236,9 @@ class UniversalCooldownDetector:
         # Always start by clearing any existing mechanic slots so nothing carries over
         self._clear_mech_slots()
         self.slot_labels = {}
+        # Slots whose art looks like white timer digits and whose timer isn't white anyway
+        # (spec mechanic_bar.no_timer_digits, e.g. Deadeye's Mark): judged by the dark overlay only
+        self.no_timer_digits = set()
 
         if not self.profession:
             return
@@ -250,6 +253,7 @@ class UniversalCooldownDetector:
                 for m_k, coords in m_slots.items():
                     self.slots[m_k] = tuple(coords)
                 self.slot_labels = m_bar.get("labels", {})
+                self.no_timer_digits = set(m_bar.get("no_timer_digits", []) or [])
                 loaded_from_spec = True
         except Exception:
             pass
@@ -380,7 +384,10 @@ class UniversalCooldownDetector:
         # -------------------------------------------------------------
         # 3. Centered White Countdown Digits
         # -------------------------------------------------------------
-        digit_detected = self._countdown_digits_present(crop)
+        digit_detected = slot_id not in getattr(self, "no_timer_digits", ()) and self._countdown_digits_present(crop)
+        # 0.10: the overlay recedes to ~0.04 before the green timer ends; usable ammo skills
+        # (charges left) show no green timer, measured on Shadow Flare at 1 charge
+        green_timer = overall_dark >= 0.10 and self._green_timer_present(crop)
 
         # -------------------------------------------------------------
         # 4. Universal Cooldown Logic (Radial Clock Model)
@@ -395,6 +402,7 @@ class UniversalCooldownDetector:
         # 4. OR Moderate dark coverage with heavily drained saturation (overall_dark >= 0.35 and sat_mean < 45)
         is_on_cooldown = (
             digit_detected or
+            green_timer or
             (max_contig_sectors >= 3 and overall_dark >= 0.30 and sat_mean < 60.0) or
             (overall_dark >= 0.55 and sat_mean < 70.0) or
             (overall_dark >= 0.35 and sat_mean < 45.0)
@@ -409,6 +417,25 @@ class UniversalCooldownDetector:
             bounding_box=(0, 0, w, h),
             radial_wedge_sectors=max_contig_sectors
         )
+
+    def _green_timer_present(self, crop: np.ndarray) -> bool:
+        """
+        Detects GW2's green countdown digits, shown on charge/ammo skills (e.g. Mercy, Deadeye's
+        Mark) once no charges are left. They are bright and saturated, so the washed-out test
+        misses those slots; callers also require a mostly dark slot (the cooldown overlay).
+        """
+        h, w = crop.shape[:2]
+        region = crop[int(h * 0.12):int(h * 0.80), int(w * 0.12):int(w * 0.88)]
+        if region.size == 0:
+            return False
+        hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+        green = ((hsv[:, :, 0] >= 35) & (hsv[:, :, 0] <= 85) & (hsv[:, :, 1] >= 120) & (hsv[:, :, 2] >= 150)).astype(np.uint8)
+        n, _, stats, _ = cv2.connectedComponentsWithStats(green)
+        for i in range(1, n):
+            ch, area = stats[i, cv2.CC_STAT_HEIGHT], stats[i, cv2.CC_STAT_AREA]
+            if 0.18 * h <= ch <= 0.6 * h and area >= 0.008 * h * w:
+                return True
+        return False
 
     def _countdown_digits_present(self, crop: np.ndarray) -> bool:
         """

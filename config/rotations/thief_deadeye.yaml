@@ -1,0 +1,116 @@
+# Thief / Deadeye rotation: Power Deadeye, Rifle (Snow Crows opener + rotation concept)
+#
+# Skill bar while kneeling (skill names from the GW2 API):
+#   1  Deadly Aim; in stealth: Malicious Death's Judgment (the stealth attack)
+#   3  Three Round Burst (4 initiative, no cooldown)
+#   5  Kneel (toggle: pressing it again stands you up)
+#   f1 Deadeye's Mark      f2 stolen skill, e.g. Steal Time (stealths you at 3+ malice)
+#   7  Mercy (loses all malice, recharges Deadeye's Mark; 2 charges, 1 s between uses)
+#   8  Shadow Flare (ground-targeted; flips to Shadow Swap, which flips back once used)
+#   9  Signet of Shadows (passive only, never pressed); 6 is the heal (not used)
+#   Slots verified against the GW2 API icons on a live recording.
+#   0  Shadow Meld (elite)
+#
+# Leave the game's auto-attack on: "auto" steps and any waiting are filled by it.
+# Revealed isn't read from the screen yet: "after: {1: 3}" waits 3 s after the last stealth
+# attack before stealthing again (Revealed's duration).
+#
+# F2 (stolen skill) and the stealth attack are skipped after 1 / 1.5 s if they never show up:
+# each Mark here gives one stolen-skill use, while this opener uses two per Mark.
+#
+# Malice comes only from initiative attacks hitting the mark (once per skill use: +1 hit,
+# +1 crit), never from waiting or auto-attacks. So Steal Time waits for 5 malice while
+# casting Three Round Burst ("fill: 3"), and gives up after 6 s. Steal Time only stealths
+# at 3+ malice, so the stealth attack on 1 is skipped below that ("only_if").
+
+name: Power Deadeye
+
+# Pressed even mid-cast; the sequence moves on as soon as they're pressed.
+# (Mark shows no cooldown right after casting, so there is nothing to confirm it by.)
+instant: [f1, f2, 5, 7, 8, 0]
+
+# Skill 1 is only pressed while it shows the stealth attack (Malicious Death's Judgment, API
+# 44087), i.e. once Steal Time / Shadow Meld has actually stealthed you, and counts as cast
+# when the icon goes away (recorded: stealth ~0.6 s after Steal Time behind a cast).
+icons:
+  1: 44087
+  # Mark: only the bright, ready icon (recorded: ready 0.92-0.94, cooling down <= 0.85)
+  f1: {id: 43390, min: 0.89}
+  # F2 holds a stolen skill only after a Mark lands, and which one depends on the target
+  # (Steal Time, Steal Defenses, ...). All of them stealth at 3+ malice, so any will do;
+  # an empty F2 slot must not read as ready.
+  f2: [42863, 43768, 40133, 40888, 43373, 44526, 40903, 40904, 39960]
+
+# Waits until affordable; a skill counts as cast once the amount drops
+costs:
+  3: {initiative: 4}
+
+double_tap:
+  8: 0.25
+
+auto_attack_seconds: 0.8
+
+opener:
+  - 5                                     # Kneel
+  - f1                                    # 1. Deadeye's Mark -> Steal Time
+  - {skill: f2, skip_if_missing: 1.0}
+  - 8                                     # 2. Shadow Flare -> Three Round Burst x2 (+ Shadow Swap)
+  - 3
+  - 8                                     #    Shadow Swap
+  - 3
+  - {skill: f2, wait: {malice: 5}, fill: 3, skip_if_missing: 1.0}  # 3. Steal Time -> Malicious Death's Judgment
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+  - 3                                     # 4. Three Round Burst (+ Mercy) -> Steal Time
+  - 7
+  - {skill: f2, skip_if_missing: 1.0}
+  - 3                                     # 5. Three Round Burst x2 (+ Deadeye's Mark)
+  - f1
+  - 3
+  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # 6. Steal Time -> MDJ (+ Mercy)
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+  - 7
+  - 3                                     # 7. Three Round Burst -> Steal Time
+  - {skill: f2, skip_if_missing: 1.0}
+  - 3                                     # 8. Three Round Burst x2 (+ Deadeye's Mark)
+  - f1
+  - 3
+  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # 9. Steal Time -> MDJ
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+# After the opener: the first block whose "when" skills are all ready runs start to finish.
+# Nothing ready -> auto-attacks until something is.
+loop:
+  - name: Mercy reset
+    when: [f1, 7]
+    steps:
+      - 3                                 # Three Round Burst x2 (+ Deadeye's Mark)
+      - f1
+      - 3
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # Steal Time -> MDJ (+ Mercy)
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+      - 7
+      - 3                                 # Three Round Burst -> Steal Time
+      - {skill: f2, skip_if_missing: 1.0}
+      - 3                                 # Three Round Burst (+ Deadeye's Mark)
+      - f1
+      - {auto: 1}                         # at least one auto-attack -> Steal Time -> MDJ
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+  - name: Shadow Flare combo
+    when: [8]
+    when_shows: {8: 41158}               # Shadow Flare itself, not Shadow Swap (same slot, flips)
+    steps:
+      - 8                                 # Shadow Flare
+      - 3                                 # Three Round Burst x2
+      - 3
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # autos while Revealed wears off -> Steal Time -> MDJ
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
+  - name: Shadow Meld intermission
+    when: [0]
+    steps:
+      - {auto: 5}                         # Auto Attack x5
+      - 0                                 # Shadow Meld -> MDJ (stealthed whatever the malice)
+      - {skill: 1, skip_if_missing: 1.5}
+      - 3                                 # Three Round Burst x2
+      - 3
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # autos while Revealed wears off -> Steal Time -> MDJ
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}

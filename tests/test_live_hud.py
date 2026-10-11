@@ -230,6 +230,44 @@ class TestLateCooldownOnRealFrames(unittest.TestCase):
             self.assertFalse(st.digit_detected, name)
             self.assertTrue(st.is_ready, name)
 
+    def test_deadeye_mark_eye_ring_is_not_a_timer(self):
+        # Deadeye's Mark art (silver disc split by red dots) reads as countdown digits, so F1
+        # never looked ready and the rotation never marked (no malice). The spec turns the digit
+        # check off for that slot; its real timer is green and the dark overlay catches it.
+        det = UniversalCooldownDetector(profession="thief", spec="deadeye")
+        for name in ("deadeye_mark_ready.png", "deadeye_mark_ready_live.png"):
+            st = det.evaluate_slot_crop(self._img(name), "mech_f1")
+            self.assertFalse(st.digit_detected, name)
+            self.assertTrue(st.is_ready, name)
+        self.assertFalse(det.evaluate_slot_crop(self._img("deadeye_mark_cd_15s.png"), "mech_f1").is_ready)
+
+
+    def test_green_charge_timers_are_cooldowns(self):
+        # Mercy / Shadow Flare at 0 charges: bright green timer on a dark slot, which the
+        # washed-out test missed (Mercy read ready and was pressed in vain). 1 charge = usable.
+        det = UniversalCooldownDetector(profession="thief", spec="deadeye")
+        for name, slot in (("deadeye_mercy_cd_green.png", "heal"), ("deadeye_mercy_cd_green_late.png", "heal"),
+                           ("deadeye_flare_0charge_cd.png", "utility_1")):
+            self.assertFalse(det.evaluate_slot_crop(self._img(name), slot).is_ready, name)
+        self.assertTrue(det.evaluate_slot_crop(self._img("deadeye_flare_1charge_ready.png"), "utility_1").is_ready)
+
+    def test_deadeye_f_skill_icons(self):
+        from core.icon_matcher import IconMatcher
+        m = IconMatcher()
+        self.assertTrue(m.shows(self._img("deadeye_mark_ready_live.png"), 43390, 0.89))
+        self.assertFalse(m.shows(self._img("deadeye_mark_cd_late.png"), 43390, 0.89), "dim late-cooldown Mark")
+        self.assertTrue(m.shows(self._img("deadeye_f2_steal_time.png"), 42863))
+        self.assertFalse(m.shows(self._img("deadeye_f2_empty.png"), 42863), "empty F2 (no Mark yet)")
+
+    def test_deadeye_f2_accepts_any_stolen_skill(self):
+        # The stolen skill depends on the marked target: a golem gave Steal Defenses, not Steal Time
+        from profiles.simple_rotation import load_simple_rotation
+        from core.icon_matcher import IconMatcher
+        m, ids = IconMatcher(), load_simple_rotation("Thief", "Deadeye").icons["f2"]
+        self.assertTrue(any(m.shows(self._img("deadeye_f2_steal_defenses.png"), i) for i in ids))
+        self.assertTrue(any(m.shows(self._img("deadeye_f2_steal_time.png"), i) for i in ids))
+        self.assertFalse(any(m.shows(self._img("deadeye_f2_empty.png"), i) for i in ids))
+
 
 if __name__ == "__main__":
     unittest.main()
