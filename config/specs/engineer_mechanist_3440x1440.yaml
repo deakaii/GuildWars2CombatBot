@@ -1,0 +1,30 @@
+profession: Engineer
+elite_spec: Mechanist
+display_name: Engineer - Mechanist
+description: 3 Jade Mech Commands (F1-F3 / M5, M4, Shift+M5) positioned on left above
+  weapon 1-2
+mechanic_bar:
+  f_slots_count: 3
+  slots:
+    mech_f1:
+    - 0.0662
+    - 0.2508
+    - 0.0409
+    - 0.1694
+    mech_f2:
+    - 0.1112
+    - 0.2508
+    - 0.0409
+    - 0.1694
+    mech_f3:
+    - 0.1567
+    - 0.2508
+    - 0.0409
+    - 0.1694
+  labels:
+    mech_f1: M1(M5)
+    mech_f2: M2(M4)
+    mech_f3: M3(Shift+M5)
+resource:
+  type: none
+  name: none

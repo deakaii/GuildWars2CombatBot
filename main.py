@@ -82,7 +82,11 @@ def main():
 
     if args.calibrate_bar:
         from tools.calibrate_bar import BarGridCalibrator
-        app = BarGridCalibrator(config_path=args.config)
+        app = BarGridCalibrator(
+            config_path=args.config,
+            profession=args.profession,
+            spec=args.spec
+        )
         app.run()
         return
 

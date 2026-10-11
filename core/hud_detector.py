@@ -160,23 +160,28 @@ class AutoHUDDetector:
         settings_path: Optional[str] = None
     ) -> Tuple[bool, str, Dict[str, Any]]:
         """
-        Captures screen (or takes frame), detects HUD, and saves tight region to settings.yaml.
+        Captures screen (or takes frame), detects HUD and exact skill squares, and saves to settings.yaml.
         """
         enable_dpi_awareness()
         screen_w, screen_h = get_screen_resolution()
 
         if frame is None:
             import mss
-            with mss.mss() as sct:
-                # Capture full primary monitor
+            with mss.MSS() as sct:
                 monitor = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
                 raw = sct.grab(monitor)
                 frame = cv2.cvtColor(np.array(raw, dtype=np.uint8), cv2.COLOR_BGRA2BGR)
 
+        # Primary: Use high-precision ActionSkillDetector to lock orb and all 10 square slots
+        from core.skill_detector import ActionSkillDetector
+        success, msg, data = ActionSkillDetector.auto_calibrate_and_save(frame=frame, settings_path=settings_path)
+        if success and "region" in data:
+            return True, msg, data["region"]
+
+        # Fallback: Detect health orb and calculate default aspect-ratio bounds
         res = cls.detect_hud_from_image(frame)
         bc = res["bottom_center"]
 
-        # Resolve settings path
         if not settings_path:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             settings_path = os.path.join(base_dir, "config", "settings.yaml")
@@ -186,15 +191,11 @@ class AutoHUDDetector:
             with open(settings_path, "r") as f:
                 settings = yaml.safe_load(f) or {}
 
-        # Update region configuration with clean bottom_center parameters
         settings["region"] = bc
 
-        # Clear legacy skewed calibrated_slots if present
-        if "calibrated_slots" in settings:
-            del settings["calibrated_slots"]
-
         with open(settings_path, "w") as f:
-            yaml.dump(settings, f, default_flow_style=False, sort_keys=False)
+            yaml.safe_dump(settings, f, default_flow_style=False, sort_keys=False)
 
         msg = f"{res['message']} Saved bottom-center HUD parameters to {settings_path}."
         return res["success"], msg, bc
+

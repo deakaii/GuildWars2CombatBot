@@ -191,9 +191,27 @@ class UniversalResourceDetector:
         self.resource_type = res_cfg.get("type", "none").lower()
         self.resource_name = res_cfg.get("name", res_cfg.get("resource_name", "resource")).lower()
 
+        # Check config/settings.yaml for user-calibrated resources
+        try:
+            import os, yaml
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            settings_path = os.path.join(base_dir, "config", "settings.yaml")
+            if os.path.exists(settings_path):
+                with open(settings_path, "r") as f:
+                    cfg = yaml.safe_load(f) or {}
+                custom_res = cfg.get("calibrated_resources", {})
+                if self.resource_type in custom_res:
+                    res_cfg["bbox"] = custom_res[self.resource_type]
+                elif self.resource_name in custom_res:
+                    res_cfg["bbox"] = custom_res[self.resource_name]
+                elif "default" in custom_res:
+                    res_cfg["bbox"] = custom_res["default"]
+        except Exception:
+            pass
+
         # Relative bounding box inside the calibrated HUD frame
-        # Default fallback pips strip directly above weapon skills: (x, y, w, h)
-        default_pips_bbox = (0.065, 0.460, 0.200, 0.080)
+        # Default fallback pips strip directly above mechanic bar: (x, y, w, h)
+        default_pips_bbox = (0.1900, 0.0800, 0.1350, 0.1250)
         self.relative_bbox = tuple(res_cfg.get("bbox", default_pips_bbox))
 
         if self.resource_type == "discrete_pips":

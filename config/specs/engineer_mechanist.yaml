@@ -12,9 +12,9 @@ description: "3 Jade Mech Commands (F1-F3 / M5, M4, Shift+M5) positioned on left
 mechanic_bar:
   f_slots_count: 3
   slots:
-    mech_f1: [0.0650, 0.1644, 0.0520, 0.2740]  # Spark Revolver / Rolling Smash (M5)
-    mech_f2: [0.1220, 0.1644, 0.0520, 0.2740]  # Core Reactor Shot / Sky Circus (M4)
-    mech_f3: [0.1790, 0.1644, 0.0520, 0.2740]  # Jade Mortar / Barrier Burst (Shift+M5)
+    mech_f1: [0.0662, 0.2508, 0.0409, 0.1694]  # Rolling Smash / Spark Revolver (M5)
+    mech_f2: [0.1112, 0.2508, 0.0409, 0.1694]  # Discharge Array / Core Reactor Shot (M4)
+    mech_f3: [0.1567, 0.2508, 0.0409, 0.1694]  # Crisis Zone / Overclock Signet (Shift+M5)
   labels:
     mech_f1: "M1(M5)"
     mech_f2: "M2(M4)"

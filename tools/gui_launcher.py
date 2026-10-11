@@ -54,8 +54,12 @@ class BuildIngestionDialog(tk.Toplevel):
     ):
         super().__init__(parent)
         self.title("📥 Ingest Rotation from LLM")
-        self.geometry("780x640")
-        self.minsize(620, 500)
+        sw = parent.winfo_screenwidth()
+        sh = parent.winfo_screenheight()
+        dlg_w = min(880, sw - 60)
+        dlg_h = min(720, sh - 80)
+        self.geometry(f"{dlg_w}x{dlg_h}")
+        self.minsize(min(700, sw - 60), min(540, sh - 80))
         self.configure(bg="#181825")
         self.transient(parent)
         self.grab_set()
@@ -329,8 +333,27 @@ class ModernBotGUI:
         enable_dpi_awareness()
         self.root = root
         self.root.title("Antigrav | Prioritization Logic Engine")
-        self.root.geometry("880x720")
-        self.root.minsize(800, 650)
+
+        # Responsive window sizing adapted to display resolution and DPI scaling
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+
+        if sh >= 1400:
+            target_w, target_h = 1180, 940
+        elif sh >= 1050:
+            target_w, target_h = 1080, 880
+        else:
+            target_w = min(1020, sw - 40)
+            target_h = min(800, sh - 60)
+
+        min_w = min(960, sw - 40)
+        min_h = min(780, sh - 60)
+
+        pos_x = max(0, (sw - target_w) // 2)
+        pos_y = max(0, (sh - target_h) // 2)
+
+        self.root.geometry(f"{target_w}x{target_h}+{pos_x}+{pos_y}")
+        self.root.minsize(min_w, min_h)
         self.root.configure(bg="#181825")
 
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -385,9 +408,17 @@ class ModernBotGUI:
             bordercolor="#45475a",
             lightcolor="#45475a",
             darkcolor="#45475a",
+            font=("Segoe UI", 10),
             padding=6,
         )
         style.map("Dark.TCombobox", fieldbackground=[("readonly", "#313244")])
+
+        # Style Combobox dropdown listbox popups
+        self.root.option_add("*TCombobox*Listbox.font", ("Segoe UI", 10))
+        self.root.option_add("*TCombobox*Listbox.background", "#1e1e2e")
+        self.root.option_add("*TCombobox*Listbox.foreground", "#cdd6f4")
+        self.root.option_add("*TCombobox*Listbox.selectBackground", "#45475a")
+        self.root.option_add("*TCombobox*Listbox.selectForeground", "#89b4fa")
 
         # Treeview styling for rotation table
         style.configure(
@@ -395,7 +426,7 @@ class ModernBotGUI:
             background="#1e1e2e",
             foreground="#cdd6f4",
             fieldbackground="#1e1e2e",
-            rowheight=26,
+            rowheight=28,
             font=("Segoe UI", 10),
             bordercolor="#313244"
         )
@@ -404,7 +435,7 @@ class ModernBotGUI:
 
         # Notebook styling
         style.configure("Dark.TNotebook", background="#1e1e2e", borderwidth=0)
-        style.configure("Dark.TNotebook.Tab", background="#313244", foreground="#cdd6f4", font=("Segoe UI", 9, "bold"), padding=[10, 4])
+        style.configure("Dark.TNotebook.Tab", background="#313244", foreground="#cdd6f4", font=("Segoe UI", 9, "bold"), padding=[12, 5])
         style.map("Dark.TNotebook.Tab", background=[("selected", "#181825")], foreground=[("selected", "#89b4fa")])
 
     def _build_ui(self):
@@ -458,29 +489,56 @@ class ModernBotGUI:
         )
         card_title.grid(row=0, column=0, columnspan=3, sticky="w", padx=14, pady=(10, 8))
 
+        card_select.columnconfigure(0, weight=1)
+        card_select.columnconfigure(1, weight=1)
+        card_select.columnconfigure(2, weight=1)
+
         # Profession
         tk.Label(card_select, text="1. Profession:", font=("Segoe UI", 9, "bold"), fg="#cdd6f4", bg="#1e1e2e").grid(row=1, column=0, sticky="w", padx=14, pady=2)
-        self.cb_profession = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly", width=22)
-        self.cb_profession.grid(row=2, column=0, padx=14, pady=(0, 14), sticky="w")
+        self.cb_profession = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly")
+        self.cb_profession.grid(row=2, column=0, padx=14, pady=(0, 14), sticky="ew")
         self.cb_profession.bind("<<ComboboxSelected>>", self.on_profession_changed)
 
         # Elite Spec
         tk.Label(card_select, text="2. Elite Specialization:", font=("Segoe UI", 9, "bold"), fg="#cdd6f4", bg="#1e1e2e").grid(row=1, column=1, sticky="w", padx=14, pady=2)
-        self.cb_elitespec = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly", width=22)
-        self.cb_elitespec.grid(row=2, column=1, padx=14, pady=(0, 14), sticky="w")
+        self.cb_elitespec = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly")
+        self.cb_elitespec.grid(row=2, column=1, padx=14, pady=(0, 14), sticky="ew")
         self.cb_elitespec.bind("<<ComboboxSelected>>", self.on_elitespec_changed)
 
         # Build
         tk.Label(card_select, text="3. Combat Build:", font=("Segoe UI", 9, "bold"), fg="#cdd6f4", bg="#1e1e2e").grid(row=1, column=2, sticky="w", padx=14, pady=2)
-        self.cb_build = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly", width=24)
-        self.cb_build.grid(row=2, column=2, padx=14, pady=(0, 14), sticky="w")
+        self.cb_build = ttk.Combobox(card_select, style="Dark.TCombobox", state="readonly")
+        self.cb_build.grid(row=2, column=2, padx=14, pady=(0, 14), sticky="ew")
         self.cb_build.bind("<<ComboboxSelected>>", self.on_build_changed)
 
-        # 3. Middle Section: Rotation Table & Controls
+        # 4. Activity Log Console (packed at bottom before mid_frame so it is never squashed)
+        log_frame = tk.Frame(self.root, bg="#1e1e2e")
+        log_frame.pack(fill="x", side="bottom", padx=16, pady=(4, 12))
+
+        lbl_log = tk.Label(log_frame, text="LIVE ACTIVITY LOG", font=("Segoe UI", 9, "bold"), fg="#89b4fa", bg="#1e1e2e")
+        lbl_log.pack(anchor="w", padx=12, pady=(6, 2))
+
+        self.txt_log = tk.Text(
+            log_frame,
+            height=4,
+            bg="#11111b",
+            fg="#a6adc8",
+            font=("Consolas", 9),
+            bd=0,
+            padx=8,
+            pady=4
+        )
+        self.txt_log.pack(fill="both", expand=True, padx=12, pady=(0, 8))
+
+        # 3. Middle Section: Rotation Table & Controls (expands to fill all remaining vertical space)
         mid_frame = tk.Frame(self.root, bg="#181825")
         mid_frame.pack(fill="both", expand=True, padx=16, pady=4)
 
-        # Left Column: Rotation Hierarchy Preview & Editor Controls
+        # Right Column: Macro Controls & Utilities (packed on right FIRST to guarantee reserved width)
+        right_panel = tk.Frame(mid_frame, bg="#1e1e2e", width=300)
+        right_panel.pack(side="right", fill="y", padx=(8, 0))
+
+        # Left Column: Rotation Hierarchy Preview & Editor Controls (expands to fill remaining width)
         left_panel = tk.Frame(mid_frame, bg="#1e1e2e")
         left_panel.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
@@ -495,73 +553,73 @@ class ModernBotGUI:
         self.btn_del_rot = tk.Button(
             header_rot,
             text="🗑 Delete",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#f38ba8",
             activebackground="#45475a",
             bd=0,
-            padx=7,
-            pady=3,
+            padx=9,
+            pady=5,
             cursor="hand2",
             command=self.delete_selected_rotation
         )
-        self.btn_del_rot.pack(side="right", padx=(3, 0))
+        self.btn_del_rot.pack(side="right", padx=(4, 0))
 
         self.btn_edit_rot = tk.Button(
             header_rot,
             text="✏ Edit",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#a6e3a1",
             activebackground="#45475a",
             bd=0,
-            padx=7,
-            pady=3,
+            padx=9,
+            pady=5,
             cursor="hand2",
             command=self.launch_edit_rotation
         )
-        self.btn_edit_rot.pack(side="right", padx=(3, 0))
+        self.btn_edit_rot.pack(side="right", padx=(4, 0))
 
         self.btn_new_rot = tk.Button(
             header_rot,
             text="➕ New",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#89b4fa",
             activebackground="#45475a",
             bd=0,
-            padx=7,
-            pady=3,
+            padx=9,
+            pady=5,
             cursor="hand2",
             command=self.launch_new_rotation
         )
-        self.btn_new_rot.pack(side="right", padx=(3, 0))
+        self.btn_new_rot.pack(side="right", padx=(4, 0))
 
         self.btn_ingest = tk.Button(
             header_rot,
             text="📥 Ingest",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#f9e2af",
             activebackground="#45475a",
             bd=0,
-            padx=7,
-            pady=3,
+            padx=9,
+            pady=5,
             cursor="hand2",
             command=self.launch_ingest_rotation
         )
-        self.btn_ingest.pack(side="right", padx=(3, 0))
+        self.btn_ingest.pack(side="right", padx=(4, 0))
 
         self.btn_copy_template = tk.Button(
             header_rot,
             text="📋 Copy Template",
-            font=("Segoe UI", 8, "bold"),
+            font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#94e2d5",
             activebackground="#45475a",
             bd=0,
-            padx=7,
-            pady=3,
+            padx=9,
+            pady=5,
             cursor="hand2",
             command=self.copy_llm_template
         )
@@ -580,11 +638,11 @@ class ModernBotGUI:
         self.tree_opener.heading("key", text="Key")
         self.tree_opener.heading("delay", text="Delay")
         self.tree_opener.heading("flags", text="Flags")
-        self.tree_opener.column("step", width=40, anchor="center")
-        self.tree_opener.column("name", width=190, anchor="w")
-        self.tree_opener.column("key", width=50, anchor="center")
-        self.tree_opener.column("delay", width=65, anchor="center")
-        self.tree_opener.column("flags", width=110, anchor="w")
+        self.tree_opener.column("step", width=45, minwidth=40, anchor="center")
+        self.tree_opener.column("name", width=220, minwidth=160, anchor="w")
+        self.tree_opener.column("key", width=60, minwidth=50, anchor="center")
+        self.tree_opener.column("delay", width=80, minwidth=65, anchor="center")
+        self.tree_opener.column("flags", width=140, minwidth=100, anchor="w")
         sb_o = ttk.Scrollbar(self.pane_opener, orient="vertical", command=self.tree_opener.yview)
         self.tree_opener.configure(yscrollcommand=sb_o.set)
         self.tree_opener.pack(side="left", fill="both", expand=True)
@@ -599,11 +657,11 @@ class ModernBotGUI:
         self.tree_loop.heading("key", text="Key")
         self.tree_loop.heading("delay", text="Delay")
         self.tree_loop.heading("flags", text="Flags")
-        self.tree_loop.column("step", width=40, anchor="center")
-        self.tree_loop.column("name", width=190, anchor="w")
-        self.tree_loop.column("key", width=50, anchor="center")
-        self.tree_loop.column("delay", width=65, anchor="center")
-        self.tree_loop.column("flags", width=110, anchor="w")
+        self.tree_loop.column("step", width=45, minwidth=40, anchor="center")
+        self.tree_loop.column("name", width=220, minwidth=160, anchor="w")
+        self.tree_loop.column("key", width=60, minwidth=50, anchor="center")
+        self.tree_loop.column("delay", width=80, minwidth=65, anchor="center")
+        self.tree_loop.column("flags", width=140, minwidth=100, anchor="w")
         sb_l = ttk.Scrollbar(self.pane_loop, orient="vertical", command=self.tree_loop.yview)
         self.tree_loop.configure(yscrollcommand=sb_l.set)
         self.tree_loop.pack(side="left", fill="both", expand=True)
@@ -618,11 +676,11 @@ class ModernBotGUI:
         self.tree_prio.heading("key", text="Key")
         self.tree_prio.heading("cooldown", text="Cooldown")
         self.tree_prio.heading("flags", text="Flags")
-        self.tree_prio.column("priority", width=60, anchor="center")
-        self.tree_prio.column("name", width=190, anchor="w")
-        self.tree_prio.column("key", width=50, anchor="center")
-        self.tree_prio.column("cooldown", width=70, anchor="center")
-        self.tree_prio.column("flags", width=110, anchor="w")
+        self.tree_prio.column("priority", width=65, minwidth=55, anchor="center")
+        self.tree_prio.column("name", width=220, minwidth=160, anchor="w")
+        self.tree_prio.column("key", width=60, minwidth=50, anchor="center")
+        self.tree_prio.column("cooldown", width=80, minwidth=65, anchor="center")
+        self.tree_prio.column("flags", width=140, minwidth=100, anchor="w")
         sb_p = ttk.Scrollbar(self.pane_prio, orient="vertical", command=self.tree_prio.yview)
         self.tree_prio.configure(yscrollcommand=sb_p.set)
         self.tree_prio.pack(side="left", fill="both", expand=True)
@@ -637,11 +695,11 @@ class ModernBotGUI:
         self.tree_mech.heading("key", text="Key")
         self.tree_mech.heading("cooldown", text="Cooldown")
         self.tree_mech.heading("flags", text="Flags")
-        self.tree_mech.column("priority", width=60, anchor="center")
-        self.tree_mech.column("name", width=190, anchor="w")
-        self.tree_mech.column("key", width=50, anchor="center")
-        self.tree_mech.column("cooldown", width=70, anchor="center")
-        self.tree_mech.column("flags", width=110, anchor="w")
+        self.tree_mech.column("priority", width=65, minwidth=55, anchor="center")
+        self.tree_mech.column("name", width=220, minwidth=160, anchor="w")
+        self.tree_mech.column("key", width=60, minwidth=50, anchor="center")
+        self.tree_mech.column("cooldown", width=80, minwidth=65, anchor="center")
+        self.tree_mech.column("flags", width=140, minwidth=100, anchor="w")
         sb_m = ttk.Scrollbar(self.pane_mech, orient="vertical", command=self.tree_mech.yview)
         self.tree_mech.configure(yscrollcommand=sb_m.set)
         self.tree_mech.pack(side="left", fill="both", expand=True)
@@ -650,10 +708,7 @@ class ModernBotGUI:
         # Backward compatibility reference
         self.tree_rotation = self.tree_prio
 
-        # Right Column: Macro Controls & Utilities
-        right_panel = tk.Frame(mid_frame, bg="#1e1e2e", width=260)
-        right_panel.pack(side="right", fill="both", padx=(8, 0))
-
+        # Right Column Controls
         lbl_ctrl = tk.Label(right_panel, text="MACRO CONTROLS", font=("Segoe UI", 10, "bold"), fg="#89b4fa", bg="#1e1e2e")
         lbl_ctrl.pack(anchor="w", padx=14, pady=(10, 8))
 
@@ -696,12 +751,15 @@ class ModernBotGUI:
             fg="#cdd6f4",
             activebackground="#45475a",
             bd=0,
-            padx=10,
+            padx=12,
             pady=7,
             cursor="hand2",
             command=self.reset_opener
         )
         self.btn_reset.pack(fill="x", padx=14, pady=4)
+
+        lbl_calib = tk.Label(right_panel, text="VISION & CALIBRATION", font=("Segoe UI", 10, "bold"), fg="#89b4fa", bg="#1e1e2e")
+        lbl_calib.pack(anchor="w", padx=14, pady=(14, 6))
 
         # Quick Utility Buttons
         btn_autodetect = tk.Button(
@@ -712,12 +770,12 @@ class ModernBotGUI:
             fg="#11111b",
             activebackground="#b4befe",
             bd=0,
-            padx=10,
+            padx=12,
             pady=7,
             cursor="hand2",
             command=self.auto_detect_hud
         )
-        btn_autodetect.pack(fill="x", padx=14, pady=(12, 4))
+        btn_autodetect.pack(fill="x", padx=14, pady=4)
 
         btn_hud = tk.Button(
             right_panel,
@@ -727,27 +785,27 @@ class ModernBotGUI:
             fg="#cdd6f4",
             activebackground="#45475a",
             bd=0,
-            padx=10,
+            padx=12,
             pady=7,
             cursor="hand2",
             command=self.launch_hud
         )
         btn_hud.pack(fill="x", padx=14, pady=4)
 
-        btn_bar_calib = tk.Button(
+        self.btn_bar_calib = tk.Button(
             right_panel,
-            text="📐  Calibrate Skill Bars (Grid)",
+            text="🎯  Calibrate Bars & Resources",
             font=("Segoe UI", 9, "bold"),
             bg="#313244",
             fg="#a6e3a1",
             activebackground="#45475a",
             bd=0,
-            padx=10,
+            padx=12,
             pady=7,
             cursor="hand2",
             command=self.launch_bar_calibrator
         )
-        btn_bar_calib.pack(fill="x", padx=14, pady=4)
+        self.btn_bar_calib.pack(fill="x", padx=14, pady=4)
 
         btn_calib = tk.Button(
             right_panel,
@@ -757,7 +815,7 @@ class ModernBotGUI:
             fg="#cdd6f4",
             activebackground="#45475a",
             bd=0,
-            padx=10,
+            padx=12,
             pady=7,
             cursor="hand2",
             command=self.launch_calibrator
@@ -773,26 +831,8 @@ class ModernBotGUI:
             bg="#1e1e2e",
             justify="center"
         )
-        lbl_hint.pack(side="bottom", pady=10)
+        lbl_hint.pack(side="bottom", pady=(10, 14))
 
-        # 4. Activity Log Console
-        log_frame = tk.Frame(self.root, bg="#1e1e2e", height=130)
-        log_frame.pack(fill="x", side="bottom", padx=16, pady=(4, 14))
-
-        lbl_log = tk.Label(log_frame, text="LIVE ACTIVITY LOG", font=("Segoe UI", 9, "bold"), fg="#89b4fa", bg="#1e1e2e")
-        lbl_log.pack(anchor="w", padx=12, pady=(6, 2))
-
-        self.txt_log = tk.Text(
-            log_frame,
-            height=5,
-            bg="#11111b",
-            fg="#a6adc8",
-            font=("Consolas", 9),
-            bd=0,
-            padx=8,
-            pady=4
-        )
-        self.txt_log.pack(fill="both", expand=True, padx=12, pady=(0, 8))
         self.log_message("System initialized. Calibrated HUD loaded (2560x1600). Ready.")
 
     def log_message(self, msg: str):
@@ -848,6 +888,8 @@ class ModernBotGUI:
             self.cb_build.set(build_names[0])
         else:
             self.cb_build.set("")
+        if hasattr(self, "btn_bar_calib"):
+            self.btn_bar_calib.config(text=f"🎯  Calibrate ({prof} - {spec})")
         self.on_build_changed()
 
     def on_build_changed(self, event=None):
@@ -1175,6 +1217,11 @@ class ModernBotGUI:
                     self.root.after(0, self._update_status_active)
 
                 if is_active:
+                    # If user is tabbed out of Guild Wars 2, throttle loop to conserve CPU
+                    if hasattr(self.input_ctrl, "is_game_focused") and not self.input_ctrl.is_game_focused():
+                        time.sleep(0.12)
+                        continue
+
                     t_start = time.perf_counter()
                     triggered = self.active_engine.run_tick()
                     if triggered:
@@ -1218,8 +1265,14 @@ class ModernBotGUI:
                 screen_h
             )
             self.log_message(f"[Auto-Detect HUD] {msg} Screen ROI: [{rx}, {ry}, {rw}x{rh}]")
-            title = "HUD Auto-Detection Success" if success else "Auto-Detection Notice"
-            info = f"{msg}\n\nCalibrated Screen ROI: [{rx}, {ry}, {rw}x{rh}]\nScreen: {screen_w}x{screen_h}\nMode: bottom_center (Aspect-Ratio Invariant)"
+            title = "HUD & Skill Squares Auto-Detection" if success else "Auto-Detection Notice"
+            info = (
+                f"{msg}\n\n"
+                f"Calibrated Screen ROI: [{rx}, {ry}, {rw}x{rh}]\n"
+                f"Screen: {screen_w}x{screen_h}\n"
+                f"Mode: bottom_center (Aspect-Ratio Invariant)\n\n"
+                f"Visual verification saved to: scratch/detected_skill_squares.png"
+            )
             messagebox.showinfo(title, info, parent=self.root)
         except Exception as e:
             self.log_message(f"[Auto-Detect HUD Error]: {e}")
@@ -1237,23 +1290,30 @@ class ModernBotGUI:
             cmd.extend(["--profession", prof])
         if spec:
             cmd.extend(["--spec", spec])
-        subprocess.Popen(cmd)
+        subprocess.Popen(cmd, cwd=self.base_dir)
         self.log_message(f"Launched Live Diagnostic HUD for [{prof} > {spec}].")
 
     def launch_bar_calibrator(self):
-        """Launches the interactive multi-slot equidistant grid calibrator in a separate process."""
+        """Launches the interactive multi-slot equidistant grid calibrator in a separate process with active spec."""
         import subprocess
         python_exe = sys.executable
         main_py = os.path.join(self.base_dir, "main.py")
-        subprocess.Popen([python_exe, main_py, "--calibrate-bar"])
-        self.log_message("Launched Action Bar Equidistant Grid Calibrator.")
+        prof = self.cb_profession.get()
+        spec = self.cb_elitespec.get()
+        cmd = [python_exe, main_py, "--calibrate-bar"]
+        if prof:
+            cmd.extend(["--profession", prof])
+        if spec:
+            cmd.extend(["--spec", spec])
+        subprocess.Popen(cmd, cwd=self.base_dir)
+        self.log_message(f"Launched Action Bar Grid Calibrator for [{prof} > {spec}].")
 
     def launch_calibrator(self):
         """Launches the visual region calibrator in a separate process."""
         import subprocess
         python_exe = sys.executable
         main_py = os.path.join(self.base_dir, "main.py")
-        subprocess.Popen([python_exe, main_py, "--calibrate"])
+        subprocess.Popen([python_exe, main_py, "--calibrate"], cwd=self.base_dir)
         self.log_message("Launched Screen Region Calibrator.")
 
     def on_close(self):

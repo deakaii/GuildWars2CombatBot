@@ -15,30 +15,66 @@ from typing import Dict, Any, Optional, List, Tuple
 SPECS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "specs")
 
 
-def sanitize_filename(profession: str, spec: str) -> str:
-    """Returns normalized filename, e.g. 'mesmer_virtuoso.yaml'."""
+def get_resolution_tag() -> str:
+    """Returns current screen resolution as a compact string, e.g. '3440x1440'."""
+    try:
+        from core.dpi_utils import get_screen_resolution
+        w, h = get_screen_resolution()
+        return f"{w}x{h}"
+    except Exception:
+        return ""
+
+
+def _normalize_key(profession: str, spec: str) -> tuple:
     p = profession.lower().strip().replace(" ", "_")
     s = spec.lower().strip().replace(" ", "_")
+    return p, s
+
+
+def sanitize_filename(profession: str, spec: str, resolution_tag: Optional[str] = None) -> str:
+    """Returns normalized filename, e.g. 'engineer_mechanist_3440x1440.yaml' or 'engineer_mechanist.yaml'."""
+    p, s = _normalize_key(profession, spec)
+    if resolution_tag:
+        return f"{p}_{s}_{resolution_tag}.yaml"
     return f"{p}_{s}.yaml"
 
 
-def get_spec_file_path(profession: str, spec: str) -> str:
-    """Returns the absolute path to the spec's YAML file."""
-    return os.path.join(SPECS_DIR, sanitize_filename(profession, spec))
+def get_spec_file_path(profession: str, spec: str, resolution_tag: Optional[str] = None) -> str:
+    """Returns the absolute path to the spec's YAML file (resolution-specific or generic)."""
+    return os.path.join(SPECS_DIR, sanitize_filename(profession, spec, resolution_tag))
 
 
-def load_spec_config(profession: str, spec: str) -> Dict[str, Any]:
+def load_spec_config(
+    profession: str,
+    spec: str,
+    resolution_tag: Optional[str] = None,
+    auto_detect_resolution: bool = True
+) -> Dict[str, Any]:
     """
     Loads the specification configuration.
     Priority order:
-    1. config/specs/{profession}_{spec}.yaml
-    2. config/professions_database.yaml (fallback)
-    3. Default archetype generation
+    1. config/specs/{profession}_{spec}_{WxH}.yaml (resolution-specific profile)
+    2. config/specs/{profession}_{spec}.yaml (base fallback profile)
+    3. config/professions_database.yaml (database fallback)
+    4. Default archetype generation
     """
-    p_clean = profession.lower().strip()
-    s_clean = spec.lower().strip()
-    target_path = get_spec_file_path(p_clean, s_clean)
+    p_clean, s_clean = _normalize_key(profession, spec)
 
+    # 1. Try resolution-specific file
+    res = resolution_tag or (get_resolution_tag() if auto_detect_resolution else None)
+    if res:
+        res_path = get_spec_file_path(p_clean, s_clean, res)
+        if os.path.exists(res_path):
+            try:
+                with open(res_path, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                    if data:
+                        return data
+            except Exception as e:
+                print(f"[SpecManager] Warning: Failed to load {res_path}: {e}")
+
+    # 2. Try generic spec file
+    target_path = get_spec_file_path(p_clean, s_clean)
     if os.path.exists(target_path):
         try:
             with open(target_path, "r", encoding="utf-8") as f:
@@ -89,10 +125,15 @@ def load_spec_config(profession: str, spec: str) -> Dict[str, Any]:
     }
 
 
-def save_spec_config(profession: str, spec: str, data: Dict[str, Any]) -> str:
-    """Saves specification configuration to config/specs/{profession}_{spec}.yaml."""
+def save_spec_config(
+    profession: str,
+    spec: str,
+    data: Dict[str, Any],
+    resolution_tag: Optional[str] = None
+) -> str:
+    """Saves specification configuration to config/specs/{profession}_{spec}_{WxH}.yaml or base file."""
     os.makedirs(SPECS_DIR, exist_ok=True)
-    target_path = get_spec_file_path(profession, spec)
+    target_path = get_spec_file_path(profession, spec, resolution_tag)
     with open(target_path, "w", encoding="utf-8") as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
     return target_path

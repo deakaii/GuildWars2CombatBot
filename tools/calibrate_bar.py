@@ -124,14 +124,59 @@ class BarGridCalibrator:
         }
     }
 
-    def __init__(self, config_path: str = "config/settings.yaml"):
+    def __init__(self, config_path: str = "config/settings.yaml", profession: Optional[str] = None, spec: Optional[str] = None):
         enable_dpi_awareness()
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.config_path = os.path.join(self.base_dir, config_path)
         self.db_path = os.path.join(self.base_dir, "config", "professions_database.yaml")
         
         self.screen_w, self.screen_h = get_screen_resolution()
-        print(f"[BarCalibrator] Primary display resolution: {self.screen_w}x{self.screen_h}")
+        self.resolution_tag = f"{self.screen_w}x{self.screen_h}"
+        print(f"[BarCalibrator] Primary display resolution: {self.screen_w}x{self.screen_h} (Tag: {self.resolution_tag})")
+
+        # Resolve profession and spec
+        settings_temp = {}
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, "r") as f:
+                    settings_temp = yaml.safe_load(f) or {}
+            except Exception:
+                pass
+        
+        last_sel = settings_temp.get("last_selected", {})
+        self.profession = (profession or last_sel.get("profession") or "Engineer").strip()
+        self.spec = (spec or last_sel.get("elite_spec") or "Mechanist").strip()
+
+        # Load active spec configuration (resolution-aware)
+        from core.spec_manager import load_spec_config
+        self.spec_config = load_spec_config(self.profession, self.spec, resolution_tag=self.resolution_tag)
+
+        # Dynamically inject spec-specific preset if available
+        if self.spec_config:
+            m_bar = self.spec_config.get("mechanic_bar", {})
+            f_count = m_bar.get("f_slots_count", 0)
+            if f_count > 0:
+                keys = [f"mech_f{i+1}" for i in range(f_count)]
+                labels_dict = m_bar.get("labels", {})
+                labels = [labels_dict.get(k, f"F{i+1}") for i, k in enumerate(keys)]
+                badges = [labels_dict.get(k, f"F{i+1}")[:8] for i, k in enumerate(keys)]
+                spec_preset_key = f"active_{self.profession.lower()}_{self.spec.lower()}"
+                self.PRESETS = {
+                    spec_preset_key: {
+                        "name": f"★ Active Spec: {self.profession.title()} {self.spec.title()} ({f_count} slots)",
+                        "count": f_count,
+                        "keys": keys,
+                        "labels": labels,
+                        "badges": badges,
+                        "is_mechanic": True
+                    },
+                    **self.PRESETS
+                }
+                self.selected_preset_key = spec_preset_key
+                self.slot_count = f_count
+            elif self.spec.lower() == "mechanist":
+                self.selected_preset_key = "mechanic_mech"
+                self.slot_count = 3
 
         # Capture frozen desktop snapshot
         try:
@@ -164,8 +209,9 @@ class BarGridCalibrator:
         self.persistent_ids: List[int] = []
 
         # Settings
-        self.selected_preset_key = "weapon"
-        self.slot_count = 5
+        if not hasattr(self, "selected_preset_key"):
+            self.selected_preset_key = "weapon"
+            self.slot_count = 5
         self.inner_padding_pct = 5.0  # 5% inner padding to avoid border glow/vfx
 
         # Build full-screen overlay UI
@@ -203,8 +249,8 @@ class BarGridCalibrator:
     def _draw_header(self):
         banner_h = 58
         self.canvas.create_rectangle(0, 0, self.screen_w, banner_h, fill="#181825", outline="#313244", width=2)
-        title_text = "📐 ACTION BAR EQUIDISTANT GRID CALIBRATOR"
-        info_text = "Drag a rectangle across ANY skill bar (e.g. 5 Weapon Skills, 3 Virtues/Mech Skills, or 5 Utility Skills) • Equidistant boxes are calculated automatically!"
+        title_text = f"📐 ACTION BAR GRID CALIBRATOR • {self.profession.title()} - {self.spec.title()} [{self.resolution_tag}]"
+        info_text = "Drag a rectangle over ANY skill bar or resource • Select preset in floating card • Saved directly to monitor profile!"
         self.canvas.create_text(
             self.screen_w // 2, 20,
             text=title_text,
@@ -548,10 +594,26 @@ class BarGridCalibrator:
                 settings = yaml.safe_load(f) or {}
 
         region = settings.get("region", {})
-        hud_w = int(region.get("abs_w", self.screen_w))
-        hud_h = int(region.get("abs_h", self.screen_h))
-        hud_x = int(region.get("abs_x", 0))
-        hud_y = int(region.get("abs_y", 0))
+        mode = region.get("mode", "bottom_center" if "width_ratio" in region else "normalized")
+        if mode == "bottom_center" and "width_ratio" in region:
+            cx_ratio = float(region.get("center_offset_ratio_x", 0.0))
+            by_ratio = float(region.get("bottom_offset_ratio_y", 0.0))
+            w_ratio = float(region.get("width_ratio", 0.76))
+            h_ratio = float(region.get("height_ratio", 0.21))
+            hud_x, hud_y, hud_w, hud_h = bottom_center_to_absolute(
+                cx_ratio, by_ratio, w_ratio, h_ratio, self.screen_w, self.screen_h
+            )
+        elif mode == "normalized" and "norm_w" in region:
+            nx = float(region.get("norm_x", 0.4))
+            ny = float(region.get("norm_y", 0.75))
+            nw = float(region.get("norm_w", 0.2))
+            nh = float(region.get("norm_h", 0.15))
+            hud_x, hud_y, hud_w, hud_h = normalized_to_absolute(nx, ny, nw, nh, self.screen_w, self.screen_h)
+        else:
+            hud_x = int(region.get("abs_x", 0))
+            hud_y = int(region.get("abs_y", 0))
+            hud_w = int(region.get("abs_w", self.screen_w))
+            hud_h = int(region.get("abs_h", self.screen_h))
 
         # Check if the calibrated bar is outside current HUD region.
         # If so, automatically expand/adjust the HUD region so it encloses all slots!
@@ -609,14 +671,24 @@ class BarGridCalibrator:
             res_bbox = [rel_bx, rel_by, rel_bw, rel_bh]
             settings["calibrated_resources"][res_type] = res_bbox
 
+            # Persist to spec config file (resolution-specific + generic)
+            if hasattr(self, "spec_config") and self.spec_config:
+                from core.spec_manager import save_spec_config
+                res_dict = self.spec_config.setdefault("resource", {})
+                res_dict["type"] = res_type
+                res_dict["bbox"] = res_bbox
+                if "max_pips" in preset_info:
+                    res_dict["max_pips"] = preset_info["max_pips"]
+                save_spec_config(self.profession, self.spec, self.spec_config, resolution_tag=self.resolution_tag)
+                save_spec_config(self.profession, self.spec, self.spec_config)
+                print(f"[BarCalibrator] Saved resource bbox for [{self.profession} > {self.spec}] to spec YAMLs")
+
             # Persist to active spec in professions_database.yaml
             if os.path.exists(self.db_path):
                 try:
                     with open(self.db_path, "r") as f:
                         db = yaml.safe_load(f) or {}
-                    last_prof = settings.get("last_selected", {}).get("profession", "Mesmer")
-                    last_spec = settings.get("last_selected", {}).get("elite_spec", "Chronomancer")
-                    spec_entry = db.get("professions", {}).get(last_prof, {}).get("elite_specs", {}).get(last_spec, {})
+                    spec_entry = db.get("professions", {}).get(self.profession, {}).get("elite_specs", {}).get(self.spec, {})
                     if spec_entry:
                         res_dict = spec_entry.setdefault("resource", {})
                         res_dict["type"] = res_type
@@ -625,7 +697,7 @@ class BarGridCalibrator:
                             res_dict["max_pips"] = preset_info["max_pips"]
                         with open(self.db_path, "w") as f:
                             yaml.safe_dump(db, f, default_flow_style=False, sort_keys=False)
-                        print(f"[BarCalibrator] Updated resource bbox for [{last_prof} > {last_spec}] in {self.db_path}")
+                        print(f"[BarCalibrator] Updated resource bbox in {self.db_path}")
                 except Exception as e:
                     print(f"[BarCalibrator] Note: Could not update resource bbox in database YAML: {e}")
 
@@ -651,25 +723,31 @@ class BarGridCalibrator:
         with open(self.config_path, "w") as f:
             yaml.safe_dump(settings, f, default_flow_style=False, sort_keys=False)
 
-        # If mechanic bar, also save to active profession in professions_database.yaml
-        if is_mech and os.path.exists(self.db_path):
-            try:
-                with open(self.db_path, "r") as f:
-                    db = yaml.safe_load(f) or {}
+        # If mechanic bar, also save to resolution-specific and generic spec YAML
+        if is_mech:
+            if hasattr(self, "spec_config") and self.spec_config:
+                from core.spec_manager import save_spec_config
+                m_bar = self.spec_config.setdefault("mechanic_bar", {})
+                existing_m_slots = m_bar.setdefault("slots", {})
+                existing_m_slots.update(mech_coords)
+                m_bar["f_slots_count"] = max(m_bar.get("f_slots_count", len(existing_m_slots)), len(existing_m_slots))
+                save_spec_config(self.profession, self.spec, self.spec_config, resolution_tag=self.resolution_tag)
+                save_spec_config(self.profession, self.spec, self.spec_config)
+                print(f"[BarCalibrator] Saved mechanic slots to config/specs/{self.profession.lower()}_{self.spec.lower()}_{self.resolution_tag}.yaml")
 
-                # Check last selected profession in settings
-                last_prof = settings.get("last_selected", {}).get("profession", "Guardian")
-                last_spec = settings.get("last_selected", {}).get("elite_spec", "Core")
-
-                prof_data = db.get("professions", {}).get(last_prof, {})
-                specs = prof_data.get("elite_specs", {})
-                if last_spec in specs:
-                    specs[last_spec]["mechanic_slots"] = mech_coords
-                    with open(self.db_path, "w") as f:
-                        yaml.safe_dump(db, f, default_flow_style=False, sort_keys=False)
-                    print(f"[BarCalibrator] Updated mechanic_slots for [{last_prof} > {last_spec}] in {self.db_path}")
-            except Exception as e:
-                print(f"[BarCalibrator] Note: Could not update database YAML: {e}")
+            if os.path.exists(self.db_path):
+                try:
+                    with open(self.db_path, "r") as f:
+                        db = yaml.safe_load(f) or {}
+                    prof_data = db.get("professions", {}).get(self.profession, {})
+                    specs = prof_data.get("elite_specs", {})
+                    if self.spec in specs:
+                        specs[self.spec]["mechanic_slots"] = mech_coords
+                        with open(self.db_path, "w") as f:
+                            yaml.safe_dump(db, f, default_flow_style=False, sort_keys=False)
+                        print(f"[BarCalibrator] Updated mechanic_slots in {self.db_path}")
+                except Exception as e:
+                    print(f"[BarCalibrator] Note: Could not update database YAML: {e}")
 
         # Make current boxes persistent on canvas so user can see they are saved
         self._freeze_current_bar_on_canvas()
@@ -679,11 +757,13 @@ class BarGridCalibrator:
             self.panel_frame.destroy()
             self.panel_frame = None
 
+        res_file_name = f"{self.profession.lower()}_{self.spec.lower()}_{self.resolution_tag}.yaml"
         msg = (
-            f"Successfully calibrated {len(saved_keys)} slots!\n"
+            f"Successfully calibrated {len(saved_keys)} slots for [{self.profession.title()} - {self.spec.title()}]!\n"
             f"Slots: {', '.join(saved_keys)}\n\n"
-            f"Saved to settings.yaml (calibrated_slots).\n"
-            f"You can now drag another rectangle over another bar (e.g. Virtues or Utility bar) or press [ESC] to finish!"
+            f"✓ Monitor Profile ({self.resolution_tag}): config/specs/{res_file_name}\n"
+            f"✓ System Settings: config/settings.yaml\n\n"
+            f"You can now drag another rectangle (e.g. Weapon Swap, Utility, or Resource) or press [ESC] to finish!"
         )
         print(f"[BarCalibrator] {msg}")
         messagebox.showinfo("Bar Calibrated", msg)
@@ -722,5 +802,11 @@ class BarGridCalibrator:
 
 
 if __name__ == "__main__":
-    calibrator = BarGridCalibrator()
+    import argparse
+    parser = argparse.ArgumentParser(description="Action Bar Equidistant Grid Calibrator")
+    parser.add_argument("--config", default="config/settings.yaml")
+    parser.add_argument("--profession", default=None)
+    parser.add_argument("--spec", default=None)
+    args = parser.parse_args()
+    calibrator = BarGridCalibrator(config_path=args.config, profession=args.profession, spec=args.spec)
     calibrator.run()

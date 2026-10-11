@@ -41,21 +41,21 @@ class UniversalCooldownDetector:
     # We define relative percentage anchors so it adapts to any resolution/aspect ratio.
     NORMALIZED_SLOTS: Dict[str, Tuple[float, float, float, float]] = {
         # Weapon swap (Immediately left of Weapon 1):
-        "weapon_swap": (0.0066, 0.4521, 0.0526, 0.4795),
+        "weapon_swap": (0.0105, 0.6964, 0.0429, 0.1774),
 
-        # Weapon bar (Bottom-left):
-        "weapon_1": (0.0658, 0.4521, 0.0757, 0.4795),
-        "weapon_2": (0.1480, 0.4521, 0.0757, 0.4795),
-        "weapon_3": (0.2303, 0.4521, 0.0757, 0.4795),
-        "weapon_4": (0.3125, 0.4521, 0.0757, 0.4795),
-        "weapon_5": (0.3947, 0.4521, 0.0757, 0.4795),
+        # Weapon bar 1 - 5 (Left of Health Orb, exact equidistant squares):
+        "weapon_1": (0.0618, 0.6750, 0.0702, 0.2903),
+        "weapon_2": (0.1359, 0.6738, 0.0702, 0.2903),
+        "weapon_3": (0.2119, 0.6742, 0.0702, 0.2903),
+        "weapon_4": (0.2858, 0.6742, 0.0702, 0.2903),
+        "weapon_5": (0.3600, 0.6746, 0.0702, 0.2903),
 
-        # Utility bar (Bottom-right):
-        "heal":      (0.5724, 0.4521, 0.0757, 0.4795),  # Q
-        "utility_1": (0.6546, 0.4521, 0.0757, 0.4795),  # E
-        "utility_2": (0.7368, 0.4521, 0.0757, 0.4795),  # R
-        "utility_3": (0.8191, 0.4521, 0.0757, 0.4795),  # T
-        "elite":     (0.9013, 0.4521, 0.0757, 0.4795),  # M3
+        # Utility bar 6 - 0 / Heal - Elite (Right of Health Orb, exact equidistant squares):
+        "heal":      (0.5686, 0.6742, 0.0702, 0.2903),  # Q / 6
+        "utility_1": (0.6446, 0.6750, 0.0702, 0.2903),  # E / 7
+        "utility_2": (0.7168, 0.6746, 0.0702, 0.2903),  # R / 8
+        "utility_3": (0.7926, 0.6746, 0.0702, 0.2903),  # T / 9
+        "elite":     (0.8669, 0.6742, 0.0702, 0.2903),  # M3 / 0
     }
 
     # Built-in archetype fallbacks for explicitly calibrated composite duos ONLY.
@@ -69,9 +69,9 @@ class UniversalCooldownDetector:
         },
         # Engineer Mechanist: 3 Jade Mech commands positioned on the left above weapon skills 1, 2
         "engineer_mechanist": {
-            "mech_f1": (0.0650, 0.1644, 0.0520, 0.2740),  # Spark Revolver (M5)
-            "mech_f2": (0.1220, 0.1644, 0.0520, 0.2740),  # Core Reactor Shot (M4)
-            "mech_f3": (0.1790, 0.1644, 0.0520, 0.2740),  # Jade Mortar (Shift+M5)
+            "mech_f1": (0.0662, 0.2508, 0.0409, 0.1694),  # Rolling Smash / Spark Revolver (M5)
+            "mech_f2": (0.1112, 0.2508, 0.0409, 0.1694),  # Discharge Array / Core Reactor Shot (M4)
+            "mech_f3": (0.1567, 0.2508, 0.0409, 0.1694),  # Crisis Zone / Overclock Signet (Shift+M5)
         },
         # Mesmer Chronomancer: 5 Shatters (F1-F4 Shatters + F5 Continuum Split)
         "mesmer_chronomancer": {
@@ -109,12 +109,38 @@ class UniversalCooldownDetector:
         "3": "weapon_3",
         "4": "weapon_4",
         "5": "weapon_5",
+        "6": "heal",
+        "7": "utility_1",
+        "8": "utility_2",
+        "9": "utility_3",
+        "0": "elite",
+        "10": "elite",
         "q": "heal",
         "e": "utility_1",
         "r": "utility_2",
         "t": "utility_3",
         "m3": "elite",
         "mouse3": "elite",
+        "skill_1": "weapon_1",
+        "skill_2": "weapon_2",
+        "skill_3": "weapon_3",
+        "skill_4": "weapon_4",
+        "skill_5": "weapon_5",
+        "skill_6": "heal",
+        "skill_7": "utility_1",
+        "skill_8": "utility_2",
+        "skill_9": "utility_3",
+        "skill_10": "elite",
+        "slot_1": "weapon_1",
+        "slot_2": "weapon_2",
+        "slot_3": "weapon_3",
+        "slot_4": "weapon_4",
+        "slot_5": "weapon_5",
+        "slot_6": "heal",
+        "slot_7": "utility_1",
+        "slot_8": "utility_2",
+        "slot_9": "utility_3",
+        "slot_10": "elite",
         "f1": "mech_f1",
         "m5": "mech_f1",
         "mouse5": "mech_f1",
@@ -162,7 +188,13 @@ class UniversalCooldownDetector:
             del self.slots[k]
 
     def load_calibrated_slots(self, settings_path: Optional[str] = None) -> None:
-        """Loads user-calibrated slot coordinates from settings.yaml if present."""
+        """Loads user-calibrated slot coordinates from settings.yaml if present.
+
+        For weapon/utility slots: always overrides with calibrated values.
+        For mech_* slots: only overrides if the active spec already declared that
+        slot (i.e. it's already in self.slots).  This prevents mech_f4/f5 from
+        being injected into specs that only have 3 mechanic skills (e.g. Mechanist).
+        """
         try:
             import os, yaml
             if not settings_path:
@@ -173,13 +205,14 @@ class UniversalCooldownDetector:
                     cfg = yaml.safe_load(f) or {}
                 custom = cfg.get("calibrated_slots", {})
                 for k, coords in custom.items():
-                    # Preserve profession-specific mechanic slots; don't let flat mech_* keys clobber them
-                    if k.startswith("mech_"):
-                        continue
                     resolved = self.resolve_slot_id(k)
+                    # Mech slots: only apply if this spec already defines that slot
+                    if resolved.startswith("mech_") and resolved not in self.slots:
+                        continue
                     self.slots[resolved] = tuple(coords)
         except Exception:
             pass
+
 
     def set_composite(self, profession: str, spec: str = "") -> None:
         """
@@ -200,8 +233,8 @@ class UniversalCooldownDetector:
 
         loaded_from_spec = False
         try:
-            from core.spec_manager import load_spec_config
-            spec_cfg = load_spec_config(self.profession, self.spec)
+            from core.spec_manager import load_spec_config, get_resolution_tag
+            spec_cfg = load_spec_config(self.profession, self.spec, resolution_tag=get_resolution_tag())
             m_bar = spec_cfg.get("mechanic_bar", {})
             m_slots = m_bar.get("slots", {})
             if m_slots:
@@ -241,16 +274,24 @@ class UniversalCooldownDetector:
 
         h, w = hud_shape[:2]
         nx, ny, nw, nh = self.slots[resolved]
-        x = int(nx * w)
-        y = int(ny * h)
-        box_w = int(nw * w)
-        box_h = int(nh * h)
+        x = int(round(nx * w))
+        y = int(round(ny * h))
+        box_w = int(round(nw * w))
+        box_h = int(round(nh * h))
 
-        # Boundary clamps
+        # Clamp starting coordinates to frame
         x = max(0, min(w - 1, x))
         y = max(0, min(h - 1, y))
-        box_w = max(1, min(w - x, box_w))
-        box_h = max(1, min(h - y, box_h))
+
+        # Action bar skills and mechanic skills are explicitly square in Guild Wars 2
+        # Enforce exact square dimensions (box_h == box_w) constrained by available bounds
+        if resolved != "weapon_swap":
+            square_size = max(1, min(box_w, w - x, h - y))
+            box_w = square_size
+            box_h = square_size
+        else:
+            box_w = max(1, min(w - x, box_w))
+            box_h = max(1, min(h - y, box_h))
 
         return x, y, box_w, box_h
 

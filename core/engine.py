@@ -80,18 +80,19 @@ class PrioritizationEngine:
         3. Evaluates behaviors from highest priority to lowest.
         4. Executes the first eligible behavior whose condition matches.
         """
-        now = time.time()
-        frame = self.monitor.grab_frame()
+        # 1. Active Window Guard: Verify Guild Wars 2 is the active foreground window FIRST
+        if hasattr(self.input_controller, "is_game_focused") and not self.input_controller.is_game_focused():
+            self.ticks_processed += 1
+            return None
 
-        # If loop is disengaged (via F10 macro or target guard), skip actions
+        # 2. If loop is disengaged (via F10 macro or target guard), skip actions
         if not self.input_controller.is_active():
             self.ticks_processed += 1
             return None
 
-        # Active Window Guard: If game is not in foreground, do not evaluate or press keys
-        if hasattr(self.input_controller, "is_game_focused") and not self.input_controller.is_game_focused():
-            self.ticks_processed += 1
-            return None
+        # 3. Only grab frame when Guild Wars 2 is actually in focus and loop is active
+        now = time.time()
+        frame = self.monitor.grab_frame()
 
         # Verify target is still available
         if self.target_guard_enabled:
@@ -152,12 +153,23 @@ class PrioritizationEngine:
                 latency = self.monitor.last_latency_ms
                 is_active = self.input_controller.is_active()
 
+                is_focused = getattr(self.input_controller, "is_game_focused", lambda: True)()
                 if triggered:
                     print(f"[{time.strftime('%H:%M:%S')}] Tick #{self.ticks_processed:04d} | Grab: {latency:.1f}ms | ACTION: {triggered}")
                 else:
                     if self.ticks_processed % 8 == 0:
-                        status_str = "ACTIVE" if is_active else "STANDBY / PAUSED"
+                        if not is_focused:
+                            status_str = "STANDBY (GW2 TABBED OUT)"
+                        elif not is_active:
+                            status_str = "STANDBY (F9 ARMED)"
+                        else:
+                            status_str = "ACTIVE"
                         print(f"[{time.strftime('%H:%M:%S')}] [{status_str}] Tick #{self.ticks_processed:04d} | Latency: {latency:.1f}ms")
+
+                # If tabbed out of GW2, sleep 150ms to conserve CPU
+                if not is_focused:
+                    time.sleep(0.15)
+                    continue
 
                 # Compute sleep time with humanized micro-jitter
                 jitter = random.uniform(self.tick_jitter[0], self.tick_jitter[1])
