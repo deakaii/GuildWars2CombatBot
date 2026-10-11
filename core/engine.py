@@ -10,6 +10,7 @@ from typing import List, Dict, Any, Optional
 from core.capture import ScreenMonitor
 from core.detector import VisualDetector
 from core.input_controller import InputController
+from core.fight_recorder import FightRecorder
 from behaviors.base import BaseBehavior
 
 
@@ -44,6 +45,14 @@ class PrioritizationEngine:
         self.target_guard_enabled = bool(self.target_guard_cfg.get("enabled", False))
         self.missing_target_tolerance = int(self.target_guard_cfg.get("missing_target_tolerance_ticks", 2))
         self.consecutive_missing_target_ticks = 0
+
+        # Fight recording (settings.yaml recording.enabled): F9 starts it, F10 stops it
+        self.recorder = FightRecorder.from_config(config)
+
+    def stop_recording(self) -> None:
+        """Ends the current fight recording, if any (called on disengage and shutdown)."""
+        if self.recorder and self.recorder.recording:
+            print(f"[Recorder] Saved fight to {self.recorder.stop()}")
 
     def register_behavior(self, behavior: BaseBehavior) -> None:
         """
@@ -87,12 +96,17 @@ class PrioritizationEngine:
 
         # 2. If loop is disengaged (via F10 macro or target guard), skip actions
         if not self.input_controller.is_active():
+            self.stop_recording()
             self.ticks_processed += 1
             return None
 
         # 3. Only grab frame when Guild Wars 2 is actually in focus and loop is active
         now = time.time()
         frame = self.monitor.grab_frame()
+        if self.recorder:
+            if not self.recorder.recording:
+                print(f"[Recorder] Recording fight to {self.recorder.start()}")
+            self.recorder.add(frame, now)
 
         # Verify target is still available
         if self.target_guard_enabled:
@@ -190,6 +204,7 @@ class PrioritizationEngine:
     def stop(self) -> None:
         """Stops the loop and releases resources."""
         self.running = False
+        self.stop_recording()
         self.monitor.close()
         self.input_controller.close()
         print(f"[Engine] Stopped. Processed {self.ticks_processed} ticks safely.")

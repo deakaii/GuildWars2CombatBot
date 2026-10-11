@@ -1301,11 +1301,14 @@ class ModernBotGUI:
                     time.sleep(sleep_time)
                 else:
                     # In Standby, sleep lightly to yield CPU while hotkey listener is active
+                    self.active_engine.stop_recording()
                     time.sleep(0.04)
 
         except Exception as e:
             self.log_message(f"[Error in Engine]: {e}")
         finally:
+            if self.active_engine:
+                self.active_engine.stop_recording()
             self.root.after(0, self._update_status_standby)
 
     def auto_detect_hud(self):
