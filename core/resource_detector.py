@@ -107,6 +107,41 @@ class DiscretePipDetector:
 
         return active_count, statuses
 
+    def evaluate_points(self, frame: np.ndarray, points: List[Tuple[int, int]], radius: int = 2) -> Tuple[int, List[PipStatus]]:
+        """
+        Evaluates pips at explicit pixel centres (x, y) in the frame, for layouts that are not
+        a single even row (Thief initiative zigzag, Deadeye malice arc). Only a small patch at
+        each centre is sampled, so a bright map background never reads as a lit pip.
+        """
+        if frame is None or frame.size == 0:
+            return 0, []
+
+        fh, fw = frame.shape[:2]
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        statuses: List[PipStatus] = []
+        active_count = 0
+
+        for i, (px, py) in enumerate(points):
+            x1, y1 = max(0, px - radius), max(0, py - radius)
+            x2, y2 = min(fw, px + radius + 1), min(fh, py + radius + 1)
+            patch = hsv[y1:y2, x1:x2]
+            mean_v = float(np.mean(patch[:, :, 2])) if patch.size > 0 else 0.0
+            mean_s = float(np.mean(patch[:, :, 1])) if patch.size > 0 else 0.0
+
+            is_active = (mean_v >= self.brightness_threshold) or (mean_v >= 55.0 and mean_s >= self.saturation_threshold)
+            if is_active:
+                active_count += 1
+
+            statuses.append(PipStatus(
+                index=i + 1,
+                is_active=is_active,
+                mean_brightness=round(mean_v, 1),
+                mean_saturation=round(mean_s, 1),
+                bbox=(x1, y1, x2 - x1, y2 - y1)
+            ))
+
+        return active_count, statuses
+
 
 class ContinuousGaugeDetector:
     """
@@ -161,6 +196,11 @@ class UniversalResourceDetector:
 
         self.pip_detector: Optional[DiscretePipDetector] = None
         self.gauge_detector: Optional[ContinuousGaugeDetector] = None
+        # Explicit pip centres (normalized to the HUD frame) and the patch radius sampled at each
+        self.pip_points: Optional[List[Tuple[float, float]]] = None
+        self.sample_radius = 2
+        # Secondary resources from extra_resources (e.g. Deadeye malice), keyed by name
+        self.extras: Dict[str, "UniversalResourceDetector"] = {}
 
         if spec_config or (profession and spec):
             self.configure(spec_config=spec_config, profession=profession, spec=spec)
@@ -213,9 +253,18 @@ class UniversalResourceDetector:
         # Default fallback pips strip directly above mechanic bar: (x, y, w, h)
         default_pips_bbox = (0.1900, 0.0800, 0.1350, 0.1250)
         self.relative_bbox = tuple(res_cfg.get("bbox", default_pips_bbox))
+        points = res_cfg.get("pip_points")
+        self.pip_points = [tuple(p) for p in points] if points else None
+        self.sample_radius = int(res_cfg.get("sample_radius", 2))
+
+        self.extras = {}
+        for extra_cfg in spec_config.get("extra_resources", []) or []:
+            extra = UniversalResourceDetector(spec_config={"resource": dict(extra_cfg)})
+            if extra.resource_type != "none":
+                self.extras[extra.resource_name] = extra
 
         if self.resource_type == "discrete_pips":
-            max_pips = int(res_cfg.get("max_pips", res_cfg.get("max_resource", 3)))
+            max_pips = int(res_cfg.get("max_pips", len(self.pip_points) if self.pip_points else res_cfg.get("max_resource", 3)))
             b_thresh = float(res_cfg.get("brightness_threshold", 70.0))
             s_thresh = float(res_cfg.get("saturation_threshold", 30.0))
             core_ratio = float(res_cfg.get("inner_core_ratio", 0.55))
@@ -238,10 +287,17 @@ class UniversalResourceDetector:
             self.pip_detector = None
             self.gauge_detector = None
 
-    def get_resource_state(self, hud_frame: np.ndarray) -> ResourceState:
+    def get_resource_state(self, hud_frame: np.ndarray, name: Optional[str] = None) -> ResourceState:
         """
         Inspects the HUD frame and returns the active ResourceState.
+        Pass name (e.g. "malice") to read one of the spec's extra_resources instead of the main one.
         """
+        if name and name.lower() != self.resource_name:
+            extra = self.extras.get(name.lower())
+            if extra is None:
+                raise KeyError(f"No resource named '{name}' for this spec")
+            return extra.get_resource_state(hud_frame)
+
         if self.resource_type == "none" or hud_frame is None or hud_frame.size == 0:
             return ResourceState(
                 resource_type="none",
@@ -254,6 +310,22 @@ class UniversalResourceDetector:
             )
 
         fh, fw = hud_frame.shape[:2]
+
+        if self.resource_type == "discrete_pips" and self.pip_detector and self.pip_points:
+            px_points = [(int(round(nx * fw)), int(round(ny * fh))) for nx, ny in self.pip_points]
+            active_pips, statuses = self.pip_detector.evaluate_points(hud_frame, px_points, self.sample_radius)
+            max_p = len(px_points)
+            return ResourceState(
+                resource_type="discrete_pips",
+                resource_name=self.resource_name,
+                current_value=float(active_pips),
+                max_value=float(max_p),
+                fill_percentage=float(active_pips) / float(max_p),
+                is_full=(active_pips >= max_p),
+                is_ready=(active_pips > 0),
+                details={"pips": statuses}
+            )
+
         rx, ry, rw, rh = self.relative_bbox
         x1 = max(0, int(rx * fw))
         y1 = max(0, int(ry * fh))
