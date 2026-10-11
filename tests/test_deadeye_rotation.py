@@ -9,6 +9,7 @@ import sys
 import unittest
 from types import SimpleNamespace
 
+import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -89,7 +90,8 @@ class TestDeadeyeRotation(unittest.TestCase):
         self.clock = Clock()
         self.game = Game(self.clock, **game)
         self.bot = SimpleRotationBehavior(rotation or load_simple_rotation("Thief", "Deadeye"),
-                                          self.game, self.game, clock=self.clock, log=lambda m: None)
+                                          self.game, self.game, clock=self.clock, log=lambda m: None,
+                                          icon_reader=lambda frame, skill, sid: self.game.stealthed)
 
     def tick(self, n=1):
         for _ in range(n):
@@ -224,6 +226,31 @@ class TestDeadeyeRotation(unittest.TestCase):
         self.make(rot, malice=0)
         self.tick(5)
         self.assertEqual(self.pressed(), ["1", "3"])
+
+    def test_stealth_attack_waits_for_its_icon_and_counts_when_it_goes(self):
+        rot = parse_simple_rotation({"opener": [1, 3], "icons": {1: 44087}})
+        self.make(rot)
+        self.tick(10)
+        self.assertEqual(self.pressed(), [], "not stealthed: slot 1 doesn't show the stealth attack")
+        self.game.stealthed = True              # e.g. Steal Time went off behind a cast
+        self.tick(5)
+        self.assertEqual(self.pressed(), ["1", "3"], "pressed once shown; cast once the icon left")
+
+    def test_fill_presses_are_spaced_out(self):
+        rot = parse_simple_rotation({"opener": [{"skill": "f2", "wait": {"malice": 5}, "fill": 3}],
+                                     "instant": ["f2"], "costs": {3: {"initiative": 4}}})
+        self.make(rot, malice=0, malice_per_burst=1)
+        self.tick(int(1.6 / TICK))
+        fills = [t for t, k in self.game.presses if k == "3"]
+        self.assertEqual(len(fills), 3)
+        self.assertTrue(all(b - a >= 0.75 for a, b in zip(fills, fills[1:])), fills)
+
+    def test_real_stealth_attack_icon_on_recorded_frames(self):
+        from core.icon_matcher import IconMatcher
+        m, fix = IconMatcher(), os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "cooldown")
+        for name, shown in (("shown", True), ("before", False), ("after", False)):
+            crop = cv2.imread(os.path.join(fix, f"deadeye_slot1_mdj_{name}.png"))
+            self.assertEqual(m.shows(crop, 44087), shown, name)
 
     def test_mistakes_are_reported(self):
         with self.assertRaisesRegex(ValueError, "unknown step key"):

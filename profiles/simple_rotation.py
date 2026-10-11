@@ -18,6 +18,8 @@ Sequence mode (e.g. Deadeye) adds an opener and a loop of blocks:
         steps: [3, f1, 3, ...]
     instant: [f1, f2, 8]           # pressed even mid-cast; the sequence moves on once pressed
     costs:   {3: {initiative: 4}}  # waits until affordable; counts as cast once the amount drops
+    icons:   {1: 44087}            # ready only while the slot shows this skill (GW2 API id);
+                                   # counts as cast once it stops showing it (e.g. stealth attack)
 
 A step is a skill, {skill, wait: {resource: min}, after: {skill: seconds}}, or {auto: N}
 (press nothing for N auto-attacks). Resources are the spec file's resource / extra_resources.
@@ -36,7 +38,9 @@ never goes off (out of range, no target) is skipped briefly instead of spammed.
 """
 
 import os
+import statistics
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -45,6 +49,7 @@ import yaml
 from behaviors.base import BaseBehavior
 from core.cooldown_detector import UniversalCooldownDetector
 from core.detector import VisualDetector
+from core.icon_matcher import IconMatcher, ensure_icon
 from core.input_controller import InputController
 from core.resource_detector import UniversalResourceDetector
 from profiles.base_profile import BaseCharacterProfile
@@ -65,6 +70,9 @@ MAX_QUEUED = 2                # the casting skill + one queued behind it (the ga
 STEP_TIMEOUT = 6.0            # a sequence step stuck this long is pressed anyway (if ready) or skipped
 NEW_FIGHT_GAP = 2.0           # seconds without engine ticks (F10 / tabbed out) before the opener restarts
 WAIT_NOTE_AFTER = 1.0         # a step waiting this long logs (once) what it's waiting for
+FILL_SPACING = 0.75           # seconds between "fill" presses, so they don't pile up in the game's queue
+SMOOTH_FRAMES = 3             # resource readings are the median of this many ticks (pip art flickers)
+ICON_STABLE_FRAMES = 2        # an icon change counts once seen this many ticks in a row (flip animation)
 
 
 @dataclass
@@ -96,6 +104,7 @@ class SimpleRotation:
     no_interrupt: Dict[str, float] = field(default_factory=dict)
     instant: Set[str] = field(default_factory=set)
     costs: Dict[str, Dict[str, float]] = field(default_factory=dict)
+    icons: Dict[str, int] = field(default_factory=dict)
     opener: List[Step] = field(default_factory=list)
     loop: List[Block] = field(default_factory=list)
     auto_attack_seconds: float = 0.8
@@ -194,6 +203,10 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
                          "(or give an 'opener' / 'loop')")
     priority = skill_list(raw_priority, "priority")
 
+    raw_icons = data.get("icons") or {}
+    if not isinstance(raw_icons, dict):
+        raise ValueError("'icons' must map skill numbers to GW2 API skill ids, e.g. {1: 44087}")
+
     raw_costs = data.get("costs") or {}
     if not isinstance(raw_costs, dict):
         raise ValueError("'costs' must map skill numbers to resources, e.g. {3: {initiative: 4}}")
@@ -205,6 +218,7 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
         no_interrupt=seconds_map("no_interrupt"),
         instant=set(skill_list(data.get("instant") or [], "instant")),
         costs={skill(k): amounts(v, f"costs {k}") for k, v in raw_costs.items()},
+        icons={skill(k): int(v) for k, v in raw_icons.items()},
         opener=opener,
         loop=loop,
         auto_attack_seconds=float(data.get("auto_attack_seconds", 0.8)),
@@ -250,11 +264,18 @@ class SimpleRotationBehavior(BaseBehavior):
         resources: Optional[UniversalResourceDetector] = None,
         clock: Callable[[], float] = time.time,
         log: Callable[[str], None] = print,
+        icon_reader: Optional[Callable[[Any, str, int], bool]] = None,
     ):
         super().__init__(name=f"{rotation.name}Rotation", priority=100, cooldown_seconds=0.0, cooldown_jitter_ratio=0.0)
         self.rotation = rotation
         self.cooldown_detector = cooldown_detector
         self.resources = resources
+        self.icon_reader = icon_reader or self._read_icon
+        self._matcher: Optional[IconMatcher] = None
+        self._history: Dict[str, deque] = {}
+        self._icon_seen: Dict[str, Tuple[bool, int]] = {}   # skill -> (last reading, ticks in a row)
+        self._icon_state: Dict[str, bool] = {}              # skill -> debounced "shows its icon"
+        self.last_fill_at = float("-inf")
         self.clock = clock
         self.log = log
         self.outstanding: List[_Press] = []    # pressed, not yet seen going off
@@ -271,6 +292,11 @@ class SimpleRotationBehavior(BaseBehavior):
         self.outstanding.clear()
         self.backoff_until.clear()
         self.last_went_off.clear()
+        if hasattr(self, "_history"):
+            self._history.clear()
+            self._icon_seen.clear()
+            self._icon_state.clear()
+            self.last_fill_at = float("-inf")
         self.steps: List[Step] = list(self.rotation.opener)
         self.block: Optional[str] = "Opener" if self.rotation.opener else None
         self.step_i = 0
@@ -293,6 +319,36 @@ class SimpleRotationBehavior(BaseBehavior):
         st = self._status(frame, skill)
         return bool(st and not st.raw_is_ready)
 
+    def _read_icon(self, frame, skill: str, skill_id: int) -> bool:
+        if self._matcher is None:
+            self._matcher = IconMatcher()
+        rect = self.cooldown_detector.get_slot_rect(frame.shape[:2], SKILL_SLOTS[skill])
+        if not rect:
+            return False
+        x, y, w, h = rect
+        return self._matcher.shows(frame[y:y + h, x:x + w], skill_id)
+
+    def _sample_icons(self, frame) -> None:
+        for skill, sid in self.rotation.icons.items():
+            v = bool(self.icon_reader(frame, skill, sid))
+            last, n = self._icon_seen.get(skill, (v, 0))
+            n = n + 1 if v == last else 1
+            self._icon_seen[skill] = (v, n)
+            if n >= ICON_STABLE_FRAMES or skill not in self._icon_state:
+                self._icon_state[skill] = v if n >= ICON_STABLE_FRAMES else False
+
+    def _shows_icon(self, frame, skill: str) -> bool:
+        return skill not in self.rotation.icons or self._icon_state.get(skill, False)
+
+    def _sample_resources(self, frame) -> None:
+        """Reads every resource the rotation uses once per tick; _amount is the recent median."""
+        if self.resources is None:
+            return
+        for r in self.rotation.resource_names():
+            h = self._history.setdefault(r, deque(maxlen=SMOOTH_FRAMES))
+            h.append(self.resources.get_resource_state(frame, r).current_value)
+            self._amounts[r] = float(statistics.median(h))
+
     def _amount(self, frame, resource: str) -> float:
         if resource not in self._amounts:
             self._amounts[resource] = self.resources.get_resource_state(frame, resource).current_value
@@ -308,7 +364,8 @@ class SimpleRotationBehavior(BaseBehavior):
     def _update_outstanding(self, frame, now: float) -> None:
         still = []
         for p in self.outstanding:
-            if not p.went_off and (self._shows_cooldown(frame, p.skill) or self._spent(frame, p)):
+            gone = p.skill in self.rotation.icons and not self._shows_icon(frame, p.skill)
+            if not p.went_off and (self._shows_cooldown(frame, p.skill) or self._spent(frame, p) or gone):
                 p.went_off = True
                 self.last_went_off[p.skill] = now
             elapsed = now - p.pressed_at
@@ -328,7 +385,8 @@ class SimpleRotationBehavior(BaseBehavior):
         return len(self.outstanding) >= MAX_QUEUED
 
     def _can_press(self, frame, skill: str, now: float) -> bool:
-        return now >= self.backoff_until.get(skill, 0.0) and self._is_ready(frame, skill)
+        return (now >= self.backoff_until.get(skill, 0.0) and self._is_ready(frame, skill)
+                and self._shows_icon(frame, skill))
 
     def evaluate_condition(self, frame, detector: VisualDetector) -> Tuple[bool, Any]:
         self.next_skill = None
@@ -340,6 +398,8 @@ class SimpleRotationBehavior(BaseBehavior):
             self.log(f"[{self.rotation.name}] New fight: starting from the opener")
             self.reset()
         self._last_tick = now
+        self._sample_resources(frame)
+        self._sample_icons(frame)
         self._update_outstanding(frame, now)
         if self.rotation.sequenced:
             return self._evaluate_sequence(frame, now)
@@ -438,7 +498,7 @@ class SimpleRotationBehavior(BaseBehavior):
         return False, None
 
     def _can_fill(self, frame, skill: str, now: float) -> bool:
-        if any(p.skill == skill for p in self.outstanding):
+        if now - self.last_fill_at < FILL_SPACING or any(p.skill == skill for p in self.outstanding):
             return False
         if skill not in self.rotation.instant and self._queue_full():
             return False
@@ -461,6 +521,8 @@ class SimpleRotationBehavior(BaseBehavior):
         if not ok:
             return False
         now = self.clock()
+        if fill:
+            self.last_fill_at = now
         instant = skill in self.rotation.instant or unconfirmed
         hold = self.rotation.no_interrupt.get(skill, 0.0)
         if instant:
@@ -490,6 +552,8 @@ class SimpleRotationProfile(BaseCharacterProfile):
         super().__init__(name=rotation.name, signature_template=None)
         resources = UniversalResourceDetector(profession=profession, spec=spec)
         check_resources(rotation, resources)
+        for sid in rotation.icons.values():
+            ensure_icon(sid)
         self.rotation_behavior = SimpleRotationBehavior(
             rotation, UniversalCooldownDetector(profession=profession, spec=spec), resources
         )

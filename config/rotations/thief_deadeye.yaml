@@ -22,13 +22,18 @@
 name: Power Deadeye
 
 # Pressed even mid-cast; the sequence moves on as soon as they're pressed.
-# f1 (Mark) is left out on purpose: the bot confirms its cooldown appeared, and retries if not.
-instant: [f2, 5, 6, 7, 0]
+# (Mark shows no cooldown right after casting, so there is nothing to confirm it by.)
+instant: [f1, f2, 5, 6, 7, 0]
+
+# Skill 1 is only pressed while it shows the stealth attack (Malicious Death's Judgment, API
+# 44087), i.e. once Steal Time / Shadow Meld has actually stealthed you, and counts as cast
+# when the icon goes away (recorded: stealth ~0.6 s after Steal Time behind a cast).
+icons:
+  1: 44087
 
 # Waits until affordable; a skill counts as cast once the amount drops
 costs:
   3: {initiative: 4}
-  1: {malice: 1}
 
 double_tap:
   7: 0.25
@@ -92,8 +97,8 @@ loop:
     when: [0]
     steps:
       - {auto: 5}                         # Auto Attack x5
-      - 0                                 # Shadow Meld -> MDJ (stealthed whatever the malice;
-      - {skill: 1, confirm: false}        #   with little malice nothing visibly drops, so don't wait)
+      - 0                                 # Shadow Meld -> MDJ (stealthed whatever the malice)
+      - 1
       - 3                                 # Three Round Burst x2
       - 3
       - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # autos while Revealed wears off -> Steal Time -> MDJ
