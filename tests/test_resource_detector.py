@@ -267,6 +267,11 @@ class TestDeadeyeOnRealFrames(unittest.TestCase):
         self.assertEqual(malice.current_value, 5)
         self.assertTrue(malice.is_full)
 
+    def test_combat_partial_initiative_and_malice(self):
+        init, malice = self._read("deadeye_combat_init8_malice4.png")
+        self.assertEqual(init.current_value, 8)
+        self.assertEqual(malice.current_value, 4)
+
     def test_unknown_resource_name_raises(self):
         det = UniversalResourceDetector(profession="thief", spec="deadeye")
         with self.assertRaises(KeyError):
