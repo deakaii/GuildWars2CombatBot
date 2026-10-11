@@ -439,6 +439,10 @@ class UniversalCooldownDetector:
             # bright artwork such as a flame core is tinted and solid
             if area / float(cw * ch) > 0.62:
                 continue
+            # Timer digits are taller than wide (<= ~0.81 measured); a white ring in the art
+            # (Deadeye's Mark, 1.31) is not
+            if cw > ch:
+                continue
             comp = (labels == i).astype(np.uint8)
             if chroma[comp.astype(bool)].mean() > 20:
                 continue
