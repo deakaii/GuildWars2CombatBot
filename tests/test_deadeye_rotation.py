@@ -67,13 +67,13 @@ class Game:
             self.stealthed = self.malice >= 3
         elif key == "f1":                                 # Deadeye's Mark
             self.cooldown("f1", 25)
-        elif key == "6":                                  # Mercy: loses malice, recharges the Mark
+        elif key == "7":                                  # Mercy: loses malice, recharges the Mark
             self.malice = 0
-            self.cooldown("6", 1)
+            self.cooldown("7", 1)
             self.cd_until.pop(SKILL_SLOTS["f1"], None)
-        elif key == "7":                                  # Shadow Flare, then Shadow Swap
+        elif key == "8":                                  # Shadow Flare, then Shadow Swap
             if self.shadow_swap_up:
-                self.cooldown("7", 20)
+                self.cooldown("8", 20)
             self.shadow_swap_up = not self.shadow_swap_up
         elif key == "0":                                  # Shadow Meld
             self.cooldown("0", 60)
@@ -118,8 +118,8 @@ class TestDeadeyeRotation(unittest.TestCase):
         while len(self.game.presses) < 25 and self.clock.t < 60:
             self.tick()
         self.assertEqual(self.pressed(), [
-            "5", "f1", "f2", "7", "3", "7", "3", "f2", "1",
-            "3", "6", "f2", "3", "f1", "3", "f2", "1", "6",
+            "5", "f1", "f2", "8", "3", "8", "3", "f2", "1",
+            "3", "7", "f2", "3", "f1", "3", "f2", "1", "7",
             "3", "f2", "3", "f1", "3", "f2", "1",
         ])
 
@@ -165,12 +165,12 @@ class TestDeadeyeRotation(unittest.TestCase):
         self._at_loop()
         self.tick()
         self.assertEqual(self.bot.block, "Shadow Flare combo")
-        self.assertEqual(self.pressed(), ["7"])
+        self.assertEqual(self.pressed(), ["8"])
 
     def test_shadow_meld_intermission_starts_with_auto_attacks(self):
         self.make(malice=5)
         self.game.cooldown("f1", 20)
-        self.game.cooldown("7", 20)
+        self.game.cooldown("8", 20)
         self._at_loop()
         self.tick(100)                         # 5 autos x 0.8 s = 4 s of pressing nothing
         self.assertEqual(self.bot.block, "Shadow Meld intermission")
@@ -179,7 +179,7 @@ class TestDeadeyeRotation(unittest.TestCase):
 
     def test_nothing_ready_presses_nothing(self):
         self.make()
-        for s in ("f1", "7", "0"):
+        for s in ("f1", "8", "0"):
             self.game.cooldown(s, 20)
         self._at_loop()
         self.tick(40)

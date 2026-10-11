@@ -5,9 +5,10 @@
 #   3  Three Round Burst (4 initiative, no cooldown)
 #   5  Kneel (toggle: pressing it again stands you up)
 #   f1 Deadeye's Mark      f2 Steal Time (stealths you at 3+ malice)
-#   6  Mercy (loses all malice, recharges Deadeye's Mark; ammo skill)
-#   7  Shadow Flare (ground-targeted; flips to Shadow Swap)
-#   8  Signet of Shadows (passive only, never pressed)
+#   7  Mercy (loses all malice, recharges Deadeye's Mark; 2 charges, 1 s between uses)
+#   8  Shadow Flare (ground-targeted; flips to Shadow Swap, which flips back once used)
+#   9  Signet of Shadows (passive only, never pressed); 6 is the heal (not used)
+#   Slots verified against the GW2 API icons on a live recording.
 #   0  Shadow Meld (elite)
 #
 # Leave the game's auto-attack on: "auto" steps and any waiting are filled by it.
@@ -23,7 +24,7 @@ name: Power Deadeye
 
 # Pressed even mid-cast; the sequence moves on as soon as they're pressed.
 # (Mark shows no cooldown right after casting, so there is nothing to confirm it by.)
-instant: [f1, f2, 5, 6, 7, 0]
+instant: [f1, f2, 5, 7, 8, 0]
 
 # Skill 1 is only pressed while it shows the stealth attack (Malicious Death's Judgment, API
 # 44087), i.e. once Steal Time / Shadow Meld has actually stealthed you, and counts as cast
@@ -40,7 +41,7 @@ costs:
   3: {initiative: 4}
 
 double_tap:
-  7: 0.25
+  8: 0.25
 
 auto_attack_seconds: 0.8
 
@@ -48,21 +49,21 @@ opener:
   - 5                                     # Kneel
   - f1                                    # 1. Deadeye's Mark -> Steal Time
   - f2
-  - 7                                     # 2. Shadow Flare -> Three Round Burst x2 (+ Shadow Swap)
+  - 8                                     # 2. Shadow Flare -> Three Round Burst x2 (+ Shadow Swap)
   - 3
-  - 7                                     #    Shadow Swap
+  - 8                                     #    Shadow Swap
   - 3
   - {skill: f2, wait: {malice: 5}, fill: 3}  # 3. Steal Time -> Malicious Death's Judgment
   - {skill: 1, only_if: {malice: 3}}
   - 3                                     # 4. Three Round Burst (+ Mercy) -> Steal Time
-  - 6
+  - 7
   - f2
   - 3                                     # 5. Three Round Burst x2 (+ Deadeye's Mark)
   - f1
   - 3
   - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # 6. Steal Time -> MDJ (+ Mercy)
   - {skill: 1, only_if: {malice: 3}}
-  - 6
+  - 7
   - 3                                     # 7. Three Round Burst -> Steal Time
   - f2
   - 3                                     # 8. Three Round Burst x2 (+ Deadeye's Mark)
@@ -74,14 +75,14 @@ opener:
 # Nothing ready -> auto-attacks until something is.
 loop:
   - name: Mercy reset
-    when: [f1, 6]
+    when: [f1, 7]
     steps:
       - 3                                 # Three Round Burst x2 (+ Deadeye's Mark)
       - f1
       - 3
       - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # Steal Time -> MDJ (+ Mercy)
       - {skill: 1, only_if: {malice: 3}}
-      - 6
+      - 7
       - 3                                 # Three Round Burst -> Steal Time
       - f2
       - 3                                 # Three Round Burst (+ Deadeye's Mark)
@@ -90,9 +91,9 @@ loop:
       - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}
       - {skill: 1, only_if: {malice: 3}}
   - name: Shadow Flare combo
-    when: [7]
+    when: [8]
     steps:
-      - 7                                 # Shadow Flare
+      - 8                                 # Shadow Flare
       - 3                                 # Three Round Burst x2
       - 3
       - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # autos while Revealed wears off -> Steal Time -> MDJ
