@@ -1,0 +1,21 @@
+# ==============================================================================
+# Per-spec corrections for tools/fetch_spec_icons.py
+#
+# The GW2 API tags most F-skills with their slot (Profession_1 -> mech_f1) and
+# elite spec, and the fetcher picks those up on its own. Some it misses (the
+# Mechanist mech commands have no slot or spec in the API) and some it gets
+# wrong. List the fixes here, keyed by spec file name (config/specs/<key>.yaml).
+#
+#   add:      slot -> skill names or numeric skill ids to add to that slot
+#   exclude:  skill names or ids to drop, whatever slot the API put them in
+#
+# If a spec has no skills in a slot, the profession's core skills for that slot
+# are used (e.g. Daredevil keeps core Steal on F1).
+# ==============================================================================
+
+engineer_mechanist:
+  add:
+    # Rocket Punch / Core Reactor Shot / Jade Mortar confirmed against a live capture
+    mech_f1: [Rocket Punch, Rolling Smash, Spark Revolver]
+    mech_f2: [Core Reactor Shot, Discharge Array]
+    mech_f3: [Jade Mortar, Crisis Zone, Overclock Signet]
