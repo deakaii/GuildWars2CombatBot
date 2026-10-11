@@ -62,8 +62,9 @@ class Game:
             self.malice = 0
         elif key == "f1":                                 # Deadeye's Mark
             self.cooldown("f1", 25)
-        elif key == "8":                                  # Mercy recharges the Mark
-            self.cooldown("8", 1)
+        elif key == "6":                                  # Mercy: loses malice, recharges the Mark
+            self.malice = 0
+            self.cooldown("6", 1)
             self.cd_until.pop(SKILL_SLOTS["f1"], None)
         elif key == "7":                                  # Shadow Flare, then Shadow Swap
             if self.shadow_swap_up:
@@ -111,7 +112,7 @@ class TestDeadeyeRotation(unittest.TestCase):
             self.tick()
         self.assertEqual(self.pressed(), [
             "5", "f1", "f2", "7", "3", "7", "3", "f2", "1",
-            "3", "8", "f2", "3", "f1", "3", "f2", "1", "8",
+            "3", "6", "f2", "3", "f1", "3", "f2", "1", "6",
             "3", "f2", "3", "f1", "3", "f2", "1",
         ])
 

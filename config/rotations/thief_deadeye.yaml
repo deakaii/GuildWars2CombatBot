@@ -5,8 +5,9 @@
 #   3  Three Round Burst (4 initiative, no cooldown)
 #   5  Kneel (toggle: pressing it again stands you up)
 #   f1 Deadeye's Mark      f2 Steal Time (stealths you at 3+ malice)
-#   7  Shadow Flare (ground-targeted; flips to Shadow Swap)   <- check your bar
-#   8  Mercy (recharges Deadeye's Mark)                        <- check your bar
+#   6  Mercy (loses all malice, recharges Deadeye's Mark; ammo skill)
+#   7  Shadow Flare (ground-targeted; flips to Shadow Swap)
+#   8  Signet of Shadows (passive only, never pressed)
 #   0  Shadow Meld (elite)
 #
 # Leave the game's auto-attack on: "auto" steps and any waiting are filled by it.
@@ -16,7 +17,7 @@
 name: Power Deadeye
 
 # Pressed even mid-cast; the sequence moves on as soon as they're pressed
-instant: [f1, f2, 5, 7, 8, 0]
+instant: [f1, f2, 5, 6, 7, 0]
 
 # Waits until affordable; a skill counts as cast once the amount drops
 costs:
@@ -39,14 +40,14 @@ opener:
   - {skill: f2, wait: {malice: 5}}        # 3. Steal Time -> Malicious Death's Judgment
   - 1
   - 3                                     # 4. Three Round Burst (+ Mercy) -> Steal Time
-  - 8
+  - 6
   - f2
   - 3                                     # 5. Three Round Burst x2 (+ Deadeye's Mark)
   - f1
   - 3
   - {skill: f2, wait: {malice: 5}, after: {1: 3}}   # 6. Steal Time -> MDJ (+ Mercy)
   - 1
-  - 8
+  - 6
   - 3                                     # 7. Three Round Burst -> Steal Time
   - f2
   - 3                                     # 8. Three Round Burst x2 (+ Deadeye's Mark)
@@ -59,14 +60,14 @@ opener:
 # Nothing ready -> auto-attacks until something is.
 loop:
   - name: Mercy reset
-    when: [f1, 8]
+    when: [f1, 6]
     steps:
       - 3                                 # Three Round Burst x2 (+ Deadeye's Mark)
       - f1
       - 3
       - {skill: f2, wait: {malice: 5}, after: {1: 3}}   # Steal Time -> MDJ (+ Mercy)
       - 1
-      - 8
+      - 6
       - 3                                 # Three Round Burst -> Steal Time
       - f2
       - 3                                 # Three Round Burst (+ Deadeye's Mark)
