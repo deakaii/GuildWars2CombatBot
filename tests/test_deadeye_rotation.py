@@ -252,6 +252,15 @@ class TestDeadeyeRotation(unittest.TestCase):
             crop = cv2.imread(os.path.join(fix, f"deadeye_slot1_mdj_{name}.png"))
             self.assertEqual(m.shows(crop, 44087), shown, name)
 
+    def test_missing_step_is_skipped_quickly(self):
+        rot = parse_simple_rotation({"opener": [{"skill": "f2", "skip_if_missing": 1.0}, 3], "instant": ["f2"]})
+        self.make(rot)
+        self.game.cooldown("f2", 100)          # F2 empty: no stolen skill
+        self.tick(int(0.9 / TICK))
+        self.assertEqual(self.pressed(), [])
+        self.tick(int(0.3 / TICK))
+        self.assertEqual(self.pressed(), ["3"], "gave up on F2 after 1 s, not 6 s")
+
     def test_mistakes_are_reported(self):
         with self.assertRaisesRegex(ValueError, "unknown step key"):
             parse_simple_rotation({"opener": [{"skill": 3, "wiat": {"malice": 5}}]})

@@ -15,6 +15,9 @@
 # Revealed isn't read from the screen yet: "after: {1: 3}" waits 3 s after the last stealth
 # attack before stealthing again (Revealed's duration).
 #
+# F2 (stolen skill) and the stealth attack are skipped after 1 / 1.5 s if they never show up:
+# each Mark here gives one stolen-skill use, while this opener uses two per Mark.
+#
 # Malice comes only from initiative attacks hitting the mark (once per skill use: +1 hit,
 # +1 crit), never from waiting or auto-attacks. So Steal Time waits for 5 malice while
 # casting Three Round Burst ("fill: 3"), and gives up after 6 s. Steal Time only stealths
@@ -50,29 +53,29 @@ auto_attack_seconds: 0.8
 opener:
   - 5                                     # Kneel
   - f1                                    # 1. Deadeye's Mark -> Steal Time
-  - f2
+  - {skill: f2, skip_if_missing: 1.0}
   - 8                                     # 2. Shadow Flare -> Three Round Burst x2 (+ Shadow Swap)
   - 3
   - 8                                     #    Shadow Swap
   - 3
-  - {skill: f2, wait: {malice: 5}, fill: 3}  # 3. Steal Time -> Malicious Death's Judgment
-  - {skill: 1, only_if: {malice: 3}}
+  - {skill: f2, wait: {malice: 5}, fill: 3, skip_if_missing: 1.0}  # 3. Steal Time -> Malicious Death's Judgment
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
   - 3                                     # 4. Three Round Burst (+ Mercy) -> Steal Time
   - 7
-  - f2
+  - {skill: f2, skip_if_missing: 1.0}
   - 3                                     # 5. Three Round Burst x2 (+ Deadeye's Mark)
   - f1
   - 3
-  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # 6. Steal Time -> MDJ (+ Mercy)
-  - {skill: 1, only_if: {malice: 3}}
+  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # 6. Steal Time -> MDJ (+ Mercy)
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
   - 7
   - 3                                     # 7. Three Round Burst -> Steal Time
-  - f2
+  - {skill: f2, skip_if_missing: 1.0}
   - 3                                     # 8. Three Round Burst x2 (+ Deadeye's Mark)
   - f1
   - 3
-  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # 9. Steal Time -> MDJ
-  - {skill: 1, only_if: {malice: 3}}
+  - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # 9. Steal Time -> MDJ
+  - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
 # After the opener: the first block whose "when" skills are all ready runs start to finish.
 # Nothing ready -> auto-attacks until something is.
 loop:
@@ -82,31 +85,31 @@ loop:
       - 3                                 # Three Round Burst x2 (+ Deadeye's Mark)
       - f1
       - 3
-      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # Steal Time -> MDJ (+ Mercy)
-      - {skill: 1, only_if: {malice: 3}}
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # Steal Time -> MDJ (+ Mercy)
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
       - 7
       - 3                                 # Three Round Burst -> Steal Time
-      - f2
+      - {skill: f2, skip_if_missing: 1.0}
       - 3                                 # Three Round Burst (+ Deadeye's Mark)
       - f1
       - {auto: 1}                         # at least one auto-attack -> Steal Time -> MDJ
-      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}
-      - {skill: 1, only_if: {malice: 3}}
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
   - name: Shadow Flare combo
     when: [8]
     steps:
       - 8                                 # Shadow Flare
       - 3                                 # Three Round Burst x2
       - 3
-      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # autos while Revealed wears off -> Steal Time -> MDJ
-      - {skill: 1, only_if: {malice: 3}}
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # autos while Revealed wears off -> Steal Time -> MDJ
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}
   - name: Shadow Meld intermission
     when: [0]
     steps:
       - {auto: 5}                         # Auto Attack x5
       - 0                                 # Shadow Meld -> MDJ (stealthed whatever the malice)
-      - 1
+      - {skill: 1, skip_if_missing: 1.5}
       - 3                                 # Three Round Burst x2
       - 3
-      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3}   # autos while Revealed wears off -> Steal Time -> MDJ
-      - {skill: 1, only_if: {malice: 3}}
+      - {skill: f2, wait: {malice: 5}, after: {1: 3}, fill: 3, skip_if_missing: 1.0}   # autos while Revealed wears off -> Steal Time -> MDJ
+      - {skill: 1, only_if: {malice: 3}, skip_if_missing: 1.5}

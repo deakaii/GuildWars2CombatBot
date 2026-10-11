@@ -27,7 +27,7 @@ A step is a skill, {skill, wait: {resource: min}, after: {skill: seconds}}, or {
 (press nothing for N auto-attacks). Resources are the spec file's resource / extra_resources.
 More step options: fill: 3 (cast 3 while waiting on a resource, e.g. to build malice),
 only_if: {malice: 3} (skip the step unless met), confirm: false (press once, don't wait to
-see it go off).
+see it go off), skip_if_missing: 1.0 (skip if the skill isn't on screen within 1 s).
 
 Readiness comes only from the on-screen cooldown detector (no timers), so cooldown
 reduction effects are handled automatically. A skill "went off" once its slot shows a
@@ -86,6 +86,7 @@ class Step:
     fill: Optional[str] = None                              # skill to cast while waiting on a resource
     only_if: Dict[str, float] = field(default_factory=dict) # skip the step unless these amounts are met
     confirm: bool = True                                    # False: press once and move on (no cost gate)
+    skip_if_missing: Optional[float] = None                 # skip if not on screen within N s (default 6)
 
     def describe(self) -> str:
         return self.skill if self.skill else f"auto x{self.autos}"
@@ -162,9 +163,9 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
     def step(raw, where: str) -> Step:
         if not isinstance(raw, dict):
             return Step(skill=skill(raw))
-        unknown = set(raw) - {"skill", "wait", "after", "auto", "fill", "only_if", "confirm"}
+        unknown = set(raw) - {"skill", "wait", "after", "auto", "fill", "only_if", "confirm", "skip_if_missing"}
         if unknown:
-            raise ValueError(f"{where}: unknown step key(s) {sorted(unknown)} (use skill, wait, after, fill, only_if, confirm, auto)")
+            raise ValueError(f"{where}: unknown step key(s) {sorted(unknown)} (use skill, wait, after, fill, only_if, confirm, skip_if_missing, auto)")
         if "auto" in raw:
             if "skill" in raw:
                 raise ValueError(f"{where}: a step is either a skill or an auto-attack pause, not both")
@@ -181,6 +182,7 @@ def parse_simple_rotation(data: Dict[str, Any], default_name: str = "Rotation") 
             fill=skill(raw["fill"]) if raw.get("fill") is not None else None,
             only_if=amounts(raw.get("only_if") or {}, f"{where} only_if"),
             confirm=bool(raw.get("confirm", True)),
+            skip_if_missing=float(raw["skip_if_missing"]) if raw.get("skip_if_missing") is not None else None,
         )
 
     def steps(raw, where: str) -> List[Step]:
@@ -494,7 +496,8 @@ class SimpleRotationBehavior(BaseBehavior):
                 return self._waiting(now, "skill queue busy: " + ", ".join(p.skill for p in self.outstanding))
             timed_out = now - self.step_started >= STEP_TIMEOUT
             if not self._can_press(frame, skill, now):
-                if timed_out:
+                missing_for = now - self.step_started
+                if timed_out or (step.skip_if_missing is not None and missing_for >= step.skip_if_missing):
                     self.log(f"[{self.rotation.name}] {self.block}: skill {skill} never became ready; skipping it")
                     self._advance()
                     continue
