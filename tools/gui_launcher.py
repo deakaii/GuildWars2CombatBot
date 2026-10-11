@@ -1134,12 +1134,13 @@ class ModernBotGUI:
         # A simple rotation file for this spec (config/rotations/{profession}_{spec}.yaml) wins
         try:
             simple = load_simple_rotation(prof, spec)
+            if simple:
+                profile = SimpleRotationProfile(simple, profession=prof, spec=spec)
         except ValueError as e:
             raise ValueError(f"Rotation file {os.path.basename(rotation_path(prof, spec))}: {e}") from e
         if simple:
-            self.log_message(f"Using rotation file {os.path.basename(rotation_path(prof, spec))}: "
-                             f"priority {' > '.join(simple.priority)}")
-            return SimpleRotationProfile(simple, profession=prof, spec=spec)
+            self.log_message(f"Using rotation file {os.path.basename(rotation_path(prof, spec))}: {simple.summary()}")
+            return profile
         builds_list = self.db.get("professions", {}).get(prof, {}).get("elite_specs", {}).get(spec, {}).get("builds", [])
         target_build = None
         for b in builds_list:
