@@ -3,28 +3,23 @@ elite_spec: Deadeye
 display_name: Thief - Deadeye
 description: Deadeye Specialization Layout
 mechanic_bar:
-  f_slots_count: 3
+  f_slots_count: 2
   slots:
-    # Deadeye's Mark sits alone above weapon swap / skill 1 (measured at 3440x1440)
+    # F1 Deadeye's Mark and F2 (stolen skill, e.g. Steal Time) sit side by side above
+    # weapon swap / skill 1, left of the initiative diamonds (measured at 3440x1440)
     mech_f1:
-    - 0.3187
-    - 0.1441
-    - 0.0224
+    - 0.0671
+    - 0.1419
+    - 0.0530
     - 0.2477
     mech_f2:
-    - 0.261
-    - 0.1562
-    - 0.055
-    - 0.3438
-    mech_f3:
-    - 0.318
-    - 0.1562
-    - 0.055
-    - 0.3438
+    - 0.1231
+    - 0.1419
+    - 0.0530
+    - 0.2477
   labels:
     mech_f1: F1
     mech_f2: F2
-    mech_f3: F3
 resource:
   type: discrete_pips
   name: initiative
