@@ -713,11 +713,15 @@ class BarGridCalibrator:
             rel_nh = round(sh / float(hud_h), 4)
 
             coord_tuple = [rel_nx, rel_ny, rel_nw, rel_nh]
-            settings["calibrated_slots"][k] = coord_tuple
             saved_keys.append(k)
 
             if is_mech:
+                # Mechanic slots belong to the spec file only: calibrated_slots in
+                # settings.yaml override every spec's mechanic layout
                 mech_coords[k] = coord_tuple
+                settings["calibrated_slots"].pop(k, None)
+            else:
+                settings["calibrated_slots"][k] = coord_tuple
 
         # Save to settings.yaml
         with open(self.config_path, "w") as f:

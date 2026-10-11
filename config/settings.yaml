@@ -14,60 +14,60 @@ behavior_one:
   template_filename: trigger_icon.png
 calibrated_slots:
   elite:
-  - 0.8665
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.8638
+  - 0.5225
+  - 0.071
+  - 0.3288
   heal:
-  - 0.5741
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.5681
+  - 0.5225
+  - 0.071
+  - 0.3288
   utility_1:
-  - 0.6472
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.642
+  - 0.5225
+  - 0.071
+  - 0.3288
   utility_2:
-  - 0.7203
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.716
+  - 0.5225
+  - 0.071
+  - 0.3288
   utility_3:
-  - 0.7934
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.7899
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_1:
-  - 0.0643
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.0652
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_2:
-  - 0.1374
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.1391
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_3:
-  - 0.2105
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.213
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_4:
-  - 0.2836
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.287
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_5:
-  - 0.3567
-  - 0.5755
-  - 0.0692
-  - 0.2898
+  - 0.3609
+  - 0.5225
+  - 0.071
+  - 0.3288
   weapon_swap:
-  - 0.0234
-  - 0.649
-  - 0.0331
-  - 0.1469
+  - 0.0058
+  - 0.536
+  - 0.0525
+  - 0.2432
 control:
   corner_failsafe: true
   emergency_stop_key: f12
@@ -80,21 +80,15 @@ last_selected:
   profession: Engineer
 region:
   bottom_offset_ratio_y: 0.0
-  center_offset_ratio_x: 0.00139
-  height_ratio: 0.17014
+  center_offset_ratio_x: 0.0
+  height_ratio: 0.15417
   mode: bottom_center
   reference_resolution:
     height: 1440
     width: 3440
-  width_ratio: 0.7125
+  width_ratio: 0.71389
 stealth:
   cooldown_jitter_ratio: 0.05
-  imperfection_behaviors:
-    enabled: true
-    fat_finger_probability: 0.35
-    hesitation_probability: 0.25
-    premature_cancel_probability: 0.15
-    re_press_probability: 0.4
   key_hold_range:
   - 0.052
   - 0.088
@@ -107,14 +101,13 @@ stealth:
   reaction_jitter_range:
   - 0.03
   - 0.075
-  rotation_effectiveness: 0.85
 target_guard:
   confidence_threshold: 0.78
   enabled: true
   missing_target_tolerance_ticks: 2
   template_filename: target_indicator.png
 timing:
-  tick_interval: 0.25
+  tick_interval: 0.05
   tick_jitter_range:
-  - 0.015
-  - 0.04
+  - 0.0
+  - 0.01

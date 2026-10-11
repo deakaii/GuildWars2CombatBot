@@ -14,6 +14,11 @@ import yaml
 import numpy as np
 import cv2
 
+import sys
+
+# Add parent directory to path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from core.skill_detector import ActionSkillDetector, SkillBarGeometry
 
 
@@ -122,6 +127,99 @@ class TestActionSkillDetector(unittest.TestCase):
         self.assertIsNotNone(geom)
         annotated = ActionSkillDetector.draw_annotated_preview(self.test_image, geom)
         self.assertEqual(annotated.shape, self.test_image.shape)
+
+
+class TestSkillDetectorOnRealHud(unittest.TestCase):
+    """Accuracy check against a real GW2 HUD screenshot (config/templates/hud_reference.png)."""
+
+    REF = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config", "templates", "hud_reference.png")
+    # Hand-measured slot left edges in hud_reference.png (1024x284), y top ~174, size ~77
+    EXPECTED_X = {
+        "weapon_1": 69, "weapon_2": 149, "weapon_3": 229, "weapon_4": 310, "weapon_5": 390,
+        "heal": 616, "utility_1": 696, "utility_2": 776, "utility_3": 857, "elite": 937,
+    }
+
+    def _check(self, frame, x_off, y_off, scale):
+        geom = ActionSkillDetector.detect_skill_bar(frame)
+        self.assertIsNotNone(geom)
+        tol = max(4, 4 * scale)
+        self.assertAlmostEqual(geom.slot_size, 77 * scale, delta=tol)
+        for key, ex in self.EXPECTED_X.items():
+            x, y, _, _ = geom.slots[key]
+            self.assertAlmostEqual(x, x_off + ex * scale, delta=tol, msg=f"{key} x")
+            self.assertAlmostEqual(y, y_off + 174 * scale, delta=tol, msg=f"{key} y")
+
+    def test_cropped_hud(self):
+        frame = cv2.imread(self.REF)
+        self.assertIsNotNone(frame)
+        self._check(frame, 0, 0, 1.0)
+
+    def test_full_screen_ultrawide_at_multiple_ui_scales(self):
+        hud = cv2.imread(self.REF)
+        for scale in (0.6, 1.0, 1.4):
+            hs = cv2.resize(hud, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            frame = np.full((1440, 3440, 3), 40, np.uint8)
+            # Red distractor in the lower screen (an enemy/effect) must not be picked as the orb
+            cv2.circle(frame, (1100, 1000), 30, (20, 20, 200), -1)
+            h, w = hs.shape[:2]
+            x0, y0 = (3440 - w) // 2, 1440 - h
+            frame[y0:y0 + h, x0:x0 + w] = hs
+            with self.subTest(scale=scale):
+                self._check(frame, x0, y0, scale)
+
+
+    def test_press_calibration_locates_darkened_slot(self):
+        # Simulate pressing each Mechanist F-skill in hud_reference.png: the icon darkens
+        # (partly at +0.5s, fully at +2s, with white timer digits) while the world moves.
+        from core.mech_press_calibrator import locate_cooldown_square, search_band
+        before = cv2.imread(self.REF)
+        geom = ActionSkillDetector.detect_skill_bar(before)
+        band = search_band(geom)
+        for x, y, s in ((75, 64, 44), (124, 64, 44), (171, 64, 44)):
+            first, confirm = before.copy(), before.copy()
+            first[y:y + s, x:x + s] = (first[y:y + s, x:x + s] * 0.6).astype(np.uint8)
+            confirm[y:y + s, x:x + s] = (confirm[y:y + s, x:x + s] * 0.35).astype(np.uint8)
+            cv2.putText(confirm, "18", (x + 8, y + 28), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            confirm[100:150, 300:360] = np.roll(confirm[100:150, 300:360], 9, axis=1)
+            box = locate_cooldown_square(before, first, confirm, band, geom.slot_size)
+            self.assertIsNotNone(box, f"slot at x={x}")
+            bx, by, bw, bh = box
+            self.assertAlmostEqual(bx, x, delta=4)
+            self.assertAlmostEqual(by, y, delta=4)
+            self.assertAlmostEqual(max(bw, bh), s, delta=5)
+
+    def test_press_calibration_ignores_no_change(self):
+        from core.mech_press_calibrator import locate_cooldown_square, search_band
+        frame = cv2.imread(self.REF)
+        geom = ActionSkillDetector.detect_skill_bar(frame)
+        self.assertIsNone(locate_cooldown_square(frame, frame, frame, search_band(geom), geom.slot_size))
+
+    def test_weapon_swap_aligned_with_skill_row(self):
+        # Swap icon in hud_reference.png: gray square at x ~7-62, y ~177-232 (top level with skills)
+        x, y, w, h = ActionSkillDetector.detect_skill_bar(cv2.imread(self.REF)).slots["weapon_swap"]
+        self.assertAlmostEqual(x, 7, delta=4)
+        self.assertAlmostEqual(y, 177, delta=4)
+        self.assertAlmostEqual(w, 56, delta=4)
+
+    def test_no_mechanic_slots_without_spec(self):
+        geom = ActionSkillDetector.detect_skill_bar(cv2.imread(self.REF))
+        self.assertFalse(any(k.startswith("mech_") for k in geom.slots))
+
+    def test_settings_never_receive_mech_slots(self):
+        # calibrated_slots in settings.yaml override every spec's mechanic layout,
+        # so auto-calibration must strip mech_* entries, including stale ones.
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".yaml") as tmp:
+            yaml.safe_dump({"calibrated_slots": {"mech_f1": [0.1, 0.1, 0.05, 0.2]}}, tmp)
+            tmp_path = tmp.name
+        try:
+            ok, msg, _ = ActionSkillDetector.auto_calibrate_and_save(frame=cv2.imread(self.REF), settings_path=tmp_path)
+            self.assertTrue(ok, msg)
+            with open(tmp_path) as fh:
+                saved = yaml.safe_load(fh)
+            self.assertFalse(any(k.startswith("mech_") for k in saved["calibrated_slots"]))
+            self.assertIn("weapon_1", saved["calibrated_slots"])
+        finally:
+            os.remove(tmp_path)
 
 
 if __name__ == "__main__":
