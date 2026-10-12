@@ -30,7 +30,7 @@ DEFAULTS = {
     "invert_turn": False,
     "stuck_window_s": 3.0,
     "stuck_min_progress": 3.0,
-    "max_stuck_attempts": 5,
+    "max_stuck_attempts": 7,
     "target_timeout_s": 240.0,
     "combat_mode": "fight",
     "combat_timeout_s": 30.0,
@@ -95,6 +95,7 @@ class Navigator:
 
         self._held: Set[str] = set()
         self._requests: List[str] = []
+        self._deferred: Set[str] = set()     # gave up once this session; retried after everything else
         self._reset_target_state()
         self._combat_since: Optional[float] = None
         self._combat_ignore_until = 0.0
@@ -188,10 +189,8 @@ class Navigator:
         self._dwell_since = None
 
         if now - self._target_started > self.cfg["target_timeout_s"]:
-            self.log(f"[NAV] Gave up on '{self.target.name}' after {self.cfg['target_timeout_s']:.0f}s "
-                     f"({fmt_dist(self.dist)} left). Skipping.")
-            self._finish_target("skipped")
-            return self._set("SKIPPED")
+            return self._set(self._give_up(f"took over {self.cfg['target_timeout_s']:.0f}s "
+                                           f"({fmt_dist(self.dist)} left)"))
 
         mounting = self._handle_mount(s, now)
         if mounting:
@@ -234,11 +233,14 @@ class Navigator:
         self._no_mount = False
         self._turn_key: Optional[str] = None
         self._turn_check = None      # [since, progress_deg, last_heading, start_pos, key] while turning
+        self._unstuck_side: Optional[int] = None   # +1 right / -1 left, chosen once per target
+        self._maneuver_name = ""
 
     def _load_map(self, map_id: int) -> bool:
         self.map_id = map_id
         self.target = None
         self._done_logged = False
+        self._deferred.clear()
         try:
             self.targets = self.targets_for_map(map_id)
         except Exception as e:
@@ -254,7 +256,8 @@ class Navigator:
         remaining = self.remaining()
         if not remaining:
             return None
-        target = min(remaining, key=lambda t: distance(s.pos, t.coord))
+        fresh = [t for t in remaining if t.id not in self._deferred] or remaining
+        target = min(fresh, key=lambda t: distance(s.pos, t.coord))
         self._reset_target_state()
         self.log(f"[NAV] Next: {target.kind} '{target.name}', {fmt_dist(distance(s.pos, target.coord))} away "
                  f"({len(remaining)} left).")
@@ -410,50 +413,97 @@ class Navigator:
                  f"(expected {'right' if expected > 0 else 'left'}). {why}")
         return True
 
+    def _give_up(self, why: str) -> str:
+        """First time: come back to it after the other targets (likely from another side). Second: skip."""
+        tid = self.target.id
+        if tid not in self._deferred:
+            self._deferred.add(tid)
+            self.log(f"[NAV] '{self.target.name}': {why} - will come back to it after the others.")
+            self._release()
+            self.target = None
+            return "DEFERRED"
+        self.log(f"[NAV] '{self.target.name}': {why} again - skipping it (Retry skipped re-enables it).")
+        self._finish_target("skipped")
+        return "SKIPPED"
+
     def _on_stuck(self, now: float) -> str:
         self._samples.clear()
         self._attempts += 1
         if self._attempts >= self.cfg["max_stuck_attempts"]:
-            self.log(f"[NAV] Stuck {self._attempts}x on the way to '{self.target.name}' - skipping it.")
-            self._finish_target("skipped")
-            return "SKIPPED"
+            return self._give_up(f"stuck {self._attempts - 1}x")
         mounted = bool(self.last and self.last.mounted)
         self._maneuver = self._build_maneuver(self._attempts, mounted)
         self._step_idx = -1
         self._step_deadline = now
         self.log(f"[NAV] Stuck (attempt {self._attempts}/{self.cfg['max_stuck_attempts'] - 1}) - "
-                 f"{'dismounting' if self._no_mount and mounted else 'trying to get around it'}.")
+                 f"{self._maneuver_name}.")
         return self._run_maneuver(now)
 
-    def _build_maneuver(self, attempt: int, mounted: bool) -> List:
-        """Steps of (keys to hold, seconds, key to tap at step start)."""
-        side = self.rng.choice(["turn_left", "turn_right"])
-        other = "turn_right" if side == "turn_left" else "turn_left"
+    @staticmethod
+    def _hold(keys, seconds, tap=None) -> Dict:
+        return {"kind": "hold", "keys": set(keys), "seconds": seconds, "tap": tap}
+
+    @staticmethod
+    def _face(offset_deg, timeout=2.5) -> Dict:
+        """Turn (in place) until facing target bearing + offset (+ = clockwise/right of the target)."""
+        return {"kind": "face", "offset": math.radians(offset_deg), "seconds": timeout}
+
+    def _build_maneuver(self, attempt: int, mounted: bool) -> List[Dict]:
+        """Escalating: leap/jump, then ride along the obstacle on alternating sides, further each time.
+        The raptor barely reverses, so it never backs up while mounted."""
+        if self._unstuck_side is None:
+            self._unstuck_side = self.rng.choice([1, -1])
+        side = self._unstuck_side
+        back = [] if mounted else [self._hold({"move_back"}, 0.8)]
         if attempt == 1:
-            return [({"move_forward"}, 0.9, "jump")]
-        if attempt == 2:
-            return [({"move_back"}, 0.8, None), ({side, "move_forward"}, 0.7, None), ({"move_forward"}, 1.5, "jump")]
-        if attempt == 3:
-            return [({"move_back"}, 1.0, None), ({other, "move_forward"}, 0.9, None), ({"move_forward"}, 2.5, "jump")]
+            self._maneuver_name = "leaping" if mounted else "jumping"
+            if mounted:   # raptor leap: hold jump to charge, release to leap
+                return [self._hold({"move_forward", "jump"}, 0.7), self._hold({"move_forward"}, 1.2)]
+            return [self._hold({"move_forward"}, 0.9, tap="jump")]
+        if attempt in (2, 3):
+            sgn = side if attempt == 2 else -side
+            self._maneuver_name = f"going around on the {'right' if sgn > 0 else 'left'}"
+            return back + [self._face(75 * sgn), self._hold({"move_forward"}, 2.5 if attempt == 2 else 4.0)]
         if mounted and not self._no_mount:
             self._no_mount = True
-            return [(set(), 0.4, "mount"), (set(), 1.0, None)]
-        return [({"move_back"}, 1.2, None), ({side, "move_forward"}, 1.3, None), ({"move_forward"}, 3.0, "jump")]
+            self._maneuver_name = "dismounting to try on foot"
+            return [self._hold(set(), 0.4, tap="mount"), self._hold(set(), 1.0)]
+        sgn = side if attempt % 2 == 0 else -side
+        self._maneuver_name = f"wide detour on the {'right' if sgn > 0 else 'left'}"
+        return back + [self._face(110 * sgn), self._hold({"move_forward"}, 6.0, tap="jump")]
 
     def _run_maneuver(self, now: float) -> str:
-        if now < self._step_deadline:
-            return "UNSTUCK"
+        if 0 <= self._step_idx < len(self._maneuver):
+            step = self._maneuver[self._step_idx]
+            if step["kind"] == "face" and now < self._step_deadline:
+                if not self._face_tick(step["offset"]):
+                    return "UNSTUCK"
+            elif now < self._step_deadline:
+                return "UNSTUCK"
         self._step_idx += 1
         if self._step_idx >= len(self._maneuver):
             self._maneuver = None
             self._apply(set())
             return "UNSTUCK"
-        keys, seconds, tap = self._maneuver[self._step_idx]
-        self._apply(set(keys))
-        if tap:
-            self.inp.tap(tap)
-        self._step_deadline = now + seconds
+        step = self._maneuver[self._step_idx]
+        self._step_deadline = now + step["seconds"]
+        if step["kind"] == "face":
+            self._face_tick(step["offset"])
+        else:
+            self._apply(step["keys"])
+            if step["tap"]:
+                self.inp.tap(step["tap"])
         return "UNSTUCK"
+
+    def _face_tick(self, offset: float) -> bool:
+        """One tick of turning toward target bearing + offset. True once within 15 degrees."""
+        err = wrap_angle(self.err + offset)
+        if abs(err) < math.radians(15):
+            self._apply(set())
+            return True
+        right = (err > 0) != bool(self.cfg["invert_turn"])
+        self._apply({"turn_right" if right else "turn_left"})
+        return False
 
     def _apply(self, keys: Set[str]) -> None:
         for k in self._held - keys:

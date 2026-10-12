@@ -88,7 +88,7 @@ navigation:
   - landmark
   heading_tolerance_deg: 12
   invert_turn: false
-  max_stuck_attempts: 5
+  max_stuck_attempts: 7
   mount_min_distance: 120
   stuck_min_progress: 3
   stuck_window_s: 3.0

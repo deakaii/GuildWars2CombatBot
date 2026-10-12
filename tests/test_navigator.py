@@ -54,13 +54,14 @@ class FakeInput:
 class World:
     """Advances physics by DT on every read(), using whatever keys are held."""
 
-    def __init__(self, clock, inp, pos=(0.0, 0.0), heading=0.0, wall_x=None, turn="turn"):
+    def __init__(self, clock, inp, pos=(0.0, 0.0), heading=0.0, wall_x=None, turn="turn", wall_y=None):
         self.clock, self.inp = clock, inp
         self.pos, self.heading = list(pos), heading
         self.mounted = False
         self.in_combat = False
         self.map_open = False
-        self.wall_x = wall_x                    # impassable vertical line
+        self.wall_x = wall_x                    # impassable vertical line...
+        self.wall_y = wall_y                    # ...or only the segment wall_y[0] <= y <= wall_y[1] (a fence)
         self.turn_rate = math.radians(200)      # rad/s
         self.turn = turn                        # "turn" | "reversed" | "strafe" (what A/D do in game)
         self._taps_seen = 0
@@ -82,7 +83,10 @@ class World:
         if self.turn == "strafe":
             nx += speed * DT * side * math.cos(self.heading + math.pi / 2)
             ny += speed * DT * side * math.sin(self.heading + math.pi / 2)
-        if self.wall_x is None or (self.pos[0] < self.wall_x) == (nx < self.wall_x):
+        crosses = self.wall_x is not None and (self.pos[0] < self.wall_x) != (nx < self.wall_x)
+        if crosses and self.wall_y is not None and not (self.wall_y[0] <= ny <= self.wall_y[1]):
+            crosses = False
+        if not crosses:
             self.pos = [nx, ny]
         return NavState(tick=int(self.clock.t / DT), map_id=15, pos=tuple(self.pos), heading_rad=self.heading,
                         in_combat=self.in_combat, mounted=self.mounted, map_open=self.map_open,
@@ -166,6 +170,48 @@ class TestNavigator(unittest.TestCase):
         self.assertIn("jump", self.inp.taps)
         self.assertTrue(any("skipping it" in m for m in self.logs))
         self.assertEqual(self.inp.held, set())
+
+    def test_gets_around_a_fence(self):
+        for mounted_leg in (False, True):
+            with self.subTest(mounted=mounted_leg):
+                self.tearDown()
+                self.setUp()
+                world = World(self.clock, self.inp, wall_x=60.0, wall_y=(-25.0, 25.0))
+                target = Target("poi:7", "landmark", "Past fence", (300.0 if mounted_leg else 140.0, 0.0))
+                nav = self.make(world, targets=[target], mount_min_distance=120 if mounted_leg else 10_000)
+                self.run_until(nav, lambda s: s == "DONE")
+                self.assertEqual(self.progress.done("Tester", 15), {"poi:7"}, self.logs)
+
+    def test_blocked_target_is_deferred_before_skipping(self):
+        world = World(self.clock, self.inp, wall_x=30.0)
+        blocked = Target("poi:9", "landmark", "Behind wall", (100.0, 0.0))
+        open_ = Target("poi:8", "landmark", "Open", (-150.0, 0.0))
+        nav = self.make(world, targets=[blocked, open_])
+        order = []
+        orig = self.progress.mark
+        self.progress.mark = lambda c, m, tid, st: (order.append((tid, st)), orig(c, m, tid, st))
+        self.run_until(nav, lambda s: s == "DONE")
+        self.assertEqual(order, [("poi:8", "done"), ("poi:9", "skipped")])
+        self.assertTrue(any("come back to it" in m for m in self.logs))
+
+    def test_mounted_unstuck_leaps_and_faces_sideways(self):
+        world = World(self.clock, self.inp, wall_x=30.0)
+        nav = self.make(world, targets=[Target("poi:9", "landmark", "Behind wall", (300.0, 0.0))],
+                        mount_min_distance=120)
+        jump_held = False
+        for _ in range(2000):
+            nav.step()
+            jump_held |= "jump" in self.inp.held
+            if "going around" in " ".join(self.logs):
+                break
+        self.assertTrue(jump_held, "raptor leap holds jump instead of tapping it")
+        self.assertNotIn("move_back", self.inp.held)
+        for _ in range(60):                      # face step: turn ~75 deg off the target, then ride
+            nav.step()
+            if self.inp.held == {"move_forward"}:
+                break
+        off = math.degrees(abs(nav.err))
+        self.assertTrue(55 <= off <= 95, off)
 
     def test_combat_hands_over_and_resumes(self):
         world = World(self.clock, self.inp)
