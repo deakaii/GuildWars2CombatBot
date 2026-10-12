@@ -10,6 +10,7 @@ import yaml
 import threading
 import time
 import random
+import math
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -36,6 +37,10 @@ from core.rotation_parser import (
     STANDARDIZED_LLM_TEMPLATE
 )
 from tools.rotation_editor import RotationEditorDialog
+from core.mumble_link import MumbleLinkReader
+from core.gw2_map_data import get_map_targets
+from core.nav_progress import NavProgress
+from core.navigator import Navigator, distance, heading_error, fmt_dist
 
 
 class BuildIngestionDialog(tk.Toplevel):
@@ -371,6 +376,15 @@ class ModernBotGUI:
         self.input_ctrl: Optional[InputController] = None
         self.start_in_standby = True
 
+        # Navigation (map completion) state
+        self.nav_thread: Optional[threading.Thread] = None
+        self.nav_stop = threading.Event()
+        self.navigator: Optional[Navigator] = None
+        self.nav_progress = NavProgress()
+        self.nav_link: Optional[MumbleLinkReader] = None
+        self.nav_last_state = None
+        self.nav_maps = {}          # map_id -> list of targets | "loading" | error string
+
         # Set Window Icon
         ico_path = os.path.join(self.base_dir, "assets", "bot_icon.ico")
         if os.path.exists(ico_path):
@@ -388,6 +402,7 @@ class ModernBotGUI:
 
         # Auto-arm engine in STANDBY mode on launch so F9 is live in background immediately!
         self.root.after(350, self._auto_arm_standby)
+        self.root.after(500, self._nav_readout_tick)
 
     def _load_yaml(self, path: str) -> dict:
         if os.path.exists(path):
@@ -705,6 +720,51 @@ class ModernBotGUI:
         self.tree_mech.configure(yscrollcommand=sb_m.set)
         self.tree_mech.pack(side="left", fill="both", expand=True)
         sb_m.pack(side="right", fill="y")
+
+        # 5. Navigation (map completion): walks to this map's waypoints & POIs via MumbleLink
+        self.pane_nav = tk.Frame(self.rot_notebook, bg="#1e1e2e")
+        self.rot_notebook.add(self.pane_nav, text="🧭 Navigation")
+
+        self.btn_nav = tk.Button(
+            self.pane_nav,
+            text="🧭  START NAVIGATION",
+            font=("Segoe UI", 11, "bold"),
+            bg="#cba6f7",
+            fg="#11111b",
+            activebackground="#b4befe",
+            bd=0,
+            padx=14,
+            pady=10,
+            cursor="hand2",
+            command=self.toggle_navigation
+        )
+        self.btn_nav.pack(fill="x", padx=12, pady=(12, 6))
+
+        nav_row = tk.Frame(self.pane_nav, bg="#1e1e2e")
+        nav_row.pack(fill="x", padx=12, pady=2)
+        for text, cmd in (("⏭  Skip target", lambda: self.nav_mark_target("skipped")),
+                          ("✔  Mark done", lambda: self.nav_mark_target("done")),
+                          ("↺  Retry skipped", self.nav_retry_skipped)):
+            tk.Button(
+                nav_row, text=text, font=("Segoe UI", 9, "bold"), bg="#313244", fg="#cdd6f4",
+                activebackground="#45475a", bd=0, padx=10, pady=7, cursor="hand2", command=cmd
+            ).pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        self.lbl_nav = tk.Label(
+            self.pane_nav, text="Waiting for Guild Wars 2...", font=("Consolas", 10), fg="#cdd6f4",
+            bg="#181825", justify="left", anchor="nw", padx=10, pady=8, height=4
+        )
+        self.lbl_nav.pack(fill="x", padx=12, pady=(8, 6))
+
+        tk.Label(
+            self.pane_nav,
+            text=("Visits the nearest unvisited waypoint / POI in a straight line, mounting for long legs. "
+                  "Fights back with the selected rotation when attacked on foot.\n"
+                  "F10 or the button stops it, F12 = emergency stop. Opening the map or chat, or alt-tabbing, pauses it.\n"
+                  "Facing should read 0° when you face north and 90° east; if the bot turns the wrong way, "
+                  "set navigation.invert_turn in settings.yaml."),
+            font=("Segoe UI", 8), fg="#a6adc8", bg="#1e1e2e", justify="left", anchor="w", wraplength=560
+        ).pack(fill="x", padx=12, pady=(2, 8))
 
         # Backward compatibility reference
         self.tree_rotation = self.tree_prio
@@ -1455,7 +1515,167 @@ class ModernBotGUI:
         subprocess.Popen([python_exe, main_py, "--calibrate"], cwd=self.base_dir)
         self.log_message("Launched Screen Region Calibrator.")
 
+    # ------------------------------------------------------------------ navigation
+
+    def toggle_navigation(self):
+        """Starts/stops walking to this map's waypoints and POIs (MumbleLink + GW2 API)."""
+        if self.nav_thread and self.nav_thread.is_alive():
+            self.nav_stop.set()
+            self.log_message("Navigation: stopping...")
+            return
+        if not self.input_ctrl:
+            self.log_message("Navigation: engine is still arming, try again in a second.")
+            return
+        try:
+            link = MumbleLinkReader()
+        except Exception as e:
+            self.log_message(f"Navigation: can't open MumbleLink ({e}).")
+            return
+
+        ctrl = self.input_ctrl
+        ctrl.reset_emergency_stop()
+        # The rotation only runs while navigation is in combat (Navigator calls combat.begin/end)
+        ctrl.disengage("Navigation: rotation waits for combat")
+        nav_cfg = dict(self.settings.get("navigation", {}))
+        gui = self
+
+        class _Combat:
+            def begin(self):
+                ctrl.engage()
+
+            def end(self):
+                ctrl.disengage("Navigation: combat over")
+                gui.root.after(0, gui.reset_opener)
+
+        log = lambda m: self.root.after(0, self.log_message, m)
+        self.navigator = Navigator(link, ctrl, self.nav_progress, nav_cfg,
+                                   combat=_Combat() if self.active_engine else None, log=log)
+        self.nav_stop = threading.Event()
+        stop_presses = ctrl.stop_key_presses
+
+        def should_stop():
+            return self.nav_stop.is_set() or ctrl.is_stopped() or ctrl.stop_key_presses != stop_presses
+
+        def worker():
+            result = "ERROR"
+            try:
+                result = self.navigator.run(should_stop)
+            except Exception as e:
+                log(f"[Error in Navigation]: {e}")
+            finally:
+                ctrl.release_all()
+                link.close()
+                log(f"Navigation stopped ({result}).")
+                self.root.after(0, self._nav_set_running, False)
+
+        self.log_message("Navigation STARTED - press F10 (or the button) to stop, F12 = emergency stop. "
+                         "Opening the map / chat or alt-tabbing pauses it.")
+        self._nav_set_running(True)
+        self.nav_thread = threading.Thread(target=worker, daemon=True)
+        self.nav_thread.start()
+
+    def _nav_set_running(self, running: bool):
+        if running:
+            self.btn_nav.config(text="■  STOP NAVIGATION (F10)", bg="#f38ba8")
+            self.lbl_status.config(text="● NAVIGATING", fg="#cba6f7", bg="#313244")
+        else:
+            self.btn_nav.config(text="🧭  START NAVIGATION", bg="#cba6f7")
+            self._update_status_standby()
+
+    def _nav_running(self) -> bool:
+        return bool(self.nav_thread and self.nav_thread.is_alive() and self.navigator)
+
+    def _nav_targets(self, map_id: int):
+        """Targets for the readout; fetched once per map on a background thread."""
+        cached = self.nav_maps.get(map_id)
+        if cached is None:
+            self.nav_maps[map_id] = "loading map data..."
+
+            def fetch():
+                try:
+                    self.nav_maps[map_id] = get_map_targets(map_id)
+                except Exception as e:
+                    self.nav_maps[map_id] = f"no map data ({e})"
+            threading.Thread(target=fetch, daemon=True).start()
+            return self.nav_maps[map_id]
+        return cached
+
+    def _nav_nearest(self, s):
+        targets = self._nav_targets(s.map_id)
+        if not isinstance(targets, list):
+            return targets, 0
+        kinds = set(self.settings.get("navigation", {}).get("enabled_kinds", ["waypoint", "landmark"]))
+        excluded = self.nav_progress.excluded(s.character or "unknown", s.map_id)
+        left = [t for t in targets if t.kind in kinds and t.id not in excluded]
+        if not left:
+            return None, 0
+        return min(left, key=lambda t: distance(s.pos, t.coord)), len(left)
+
+    def _nav_readout_tick(self):
+        """Live MumbleLink readout. Never sends input - also the in-game sanity check for heading/coords."""
+        try:
+            if self.nav_link is None:
+                self.nav_link = MumbleLinkReader()
+            nav = self.navigator if self._nav_running() else None
+            s = nav.last if nav else self.nav_link.read()
+            self.nav_last_state = s
+            self.lbl_nav.config(text=self._nav_readout_text(s, nav))
+        except Exception as e:
+            self.lbl_nav.config(text=f"MumbleLink unavailable: {e}")
+        self.root.after(250, self._nav_readout_tick)
+
+    def _nav_readout_text(self, s, nav) -> str:
+        if s is None:
+            return "Guild Wars 2 not running (or loading screen)."
+        flags = [f for f, on in (("mounted", s.mounted), ("COMBAT", s.in_combat),
+                                 ("map open", s.map_open), ("chat", s.textbox_focused)) if on]
+        compass = (math.degrees(s.heading_rad) + 90) % 360      # 0 = north, 90 = east
+        lines = [f"{s.character or '?'} · map {s.map_id}",
+                 f"pos {s.pos[0]:.0f}, {s.pos[1]:.0f} · facing {compass:.0f}°"
+                 + (f" · {', '.join(flags)}" if flags else "")]
+        if nav:
+            target, left = nav.target, len(nav.remaining())
+            lines.append(f"state {nav.state} · {left} left")
+        else:
+            target, left = self._nav_nearest(s)
+        if isinstance(target, str):
+            lines.append(target)
+        elif target is None:
+            lines.append("Nothing left to visit on this map.")
+        else:
+            err = math.degrees(heading_error(s, target.coord))
+            side = "ahead" if abs(err) < 10 else (f"right {err:.0f}°" if err > 0 else f"left {-err:.0f}°")
+            lines.append(f"→ {target.kind} '{target.name}'")
+            lines.append(f"  {fmt_dist(distance(s.pos, target.coord))} · {side}"
+                         + ("" if nav else f" · {left} left"))
+        return "\n".join(lines)
+
+    def nav_mark_target(self, status: str):
+        """Skip / mark done: the navigator's current target, or the readout's nearest one."""
+        if self._nav_running():
+            self.navigator.request("skip" if status == "skipped" else "done")
+            return
+        s = self.nav_last_state
+        if s is None:
+            self.log_message("Navigation: Guild Wars 2 isn't running.")
+            return
+        target, _ = self._nav_nearest(s)
+        if target is None or isinstance(target, str):
+            self.log_message("Navigation: no target to mark.")
+            return
+        self.nav_progress.mark(s.character or "unknown", s.map_id, target.id, status)
+        self.log_message(f"Navigation: '{target.name}' marked {status}.")
+
+    def nav_retry_skipped(self):
+        s = self.nav_last_state
+        if s is None:
+            self.log_message("Navigation: Guild Wars 2 isn't running.")
+            return
+        n = self.nav_progress.clear_skipped(s.character or "unknown", s.map_id)
+        self.log_message(f"Navigation: {n} skipped target(s) on map {s.map_id} will be retried.")
+
     def on_close(self):
+        self.nav_stop.set()
         if self.input_ctrl:
             self.input_ctrl.trigger_emergency_stop()
         self.root.destroy()

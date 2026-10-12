@@ -106,3 +106,41 @@ keybind_mapping:
     user: "shift+e"
     type: "combo"
     description: "Shift + E"
+
+  # Movement & world interaction (Navigation). "user" must match your in-game binds;
+  # turn_left/turn_right must be TURN binds (default A/D), not strafe.
+  move_forward:
+    default: "w"
+    user: "w"
+    type: "key"
+
+  move_back:
+    default: "s"
+    user: "s"
+    type: "key"
+
+  turn_left:
+    default: "a"
+    user: "a"
+    type: "key"
+
+  turn_right:
+    default: "d"
+    user: "d"
+    type: "key"
+
+  jump:
+    default: "space"
+    user: "space"
+    type: "key"
+
+  mount:
+    default: "x"
+    user: "x"
+    type: "key"
+    description: "Mount / Dismount"
+
+  interact:
+    default: "f"
+    user: "f"
+    type: "key"

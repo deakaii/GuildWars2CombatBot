@@ -6,7 +6,7 @@ Designed for 3D DirectX applications without memory injection or suspicious synt
 import time
 import random
 import threading
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
 import pydirectinput
 from pynput import keyboard
 
@@ -47,6 +47,13 @@ class InputController:
 
         self.last_pressed_action: Optional[str] = None
 
+        # Keys held down by key_down() (navigation movement); released by release_all()
+        self._held_keys: Set[str] = set()
+        self._held_lock = threading.Lock()
+
+        # Bumped on every stop-key press, so loops that don't own _is_active (navigation) can watch it
+        self.stop_key_presses = 0
+
         # Game Window Focus Guard: Blocks inputs if user tabs away to IDE or browser
         self.require_game_focus = bool(control_config.get("require_game_focus", True))
 
@@ -81,11 +88,13 @@ class InputController:
                 if k_name == self._emergency_key_name:
                     print(f"\n[EMERGENCY STOP] Triggered by [{k_name.upper()}]! Terminating immediately.")
                     self._emergency_stop.set()
+                    self.release_all()
                 elif k_name == self._start_key_name:
                     if not self._is_active.is_set():
                         print(f"\n[MACRO] >>> ENGAGED (Started by [{k_name.upper()}]) <<<")
                         self._is_active.set()
                 elif k_name == self._stop_key_name:
+                    self.stop_key_presses += 1
                     if self._is_active.is_set():
                         print(f"\n[MACRO] ||| DISENGAGED (Paused by [{k_name.upper()}]) |||")
                         self._is_active.clear()
@@ -118,6 +127,7 @@ class InputController:
     def trigger_emergency_stop(self) -> None:
         """Manually trigger emergency halt."""
         self._emergency_stop.set()
+        self.release_all()
 
     def reset_emergency_stop(self) -> None:
         """Clears emergency stop flag so user can re-engage cleanly."""
@@ -274,7 +284,56 @@ class InputController:
 
 
 
+    def key_down(self, raw_input: str) -> bool:
+        """Holds a keyboard key (e.g. 'move_forward') until key_up/release_all. Keyboard keys only."""
+        if self.is_stopped() or not self.is_game_focused():
+            return False
+        key = self.mapper.translate(raw_input).lower().strip()
+        with self._held_lock:
+            if key in self._held_keys:
+                return True
+            try:
+                pydirectinput.keyDown(key)
+            except Exception as e:
+                print(f"[InputController Error] key_down failed for '{key}' (from '{raw_input}'): {e}")
+                return False
+            self._held_keys.add(key)
+        return True
+
+    def key_up(self, raw_input: str) -> None:
+        key = self.mapper.translate(raw_input).lower().strip()
+        with self._held_lock:
+            if key in self._held_keys:
+                self._held_keys.discard(key)
+                try:
+                    pydirectinput.keyUp(key)
+                except Exception as e:
+                    print(f"[InputController Error] key_up failed for '{key}': {e}")
+
+    def release_all(self) -> None:
+        """Releases every key held by key_down. Safe to call from any thread, any time."""
+        with self._held_lock:
+            keys = list(self._held_keys)
+            self._held_keys.clear()
+        for key in keys:
+            try:
+                pydirectinput.keyUp(key)
+            except Exception:
+                pass
+
+    def tap(self, raw_input: str) -> bool:
+        """Single humanized press without the combat reaction jitter (jump, mount, interact)."""
+        if self.is_stopped() or not self.is_game_focused():
+            return False
+        key = self.mapper.translate(raw_input).lower().strip()
+        try:
+            return self._execute_low_level(key, random.uniform(*self.key_hold_range))
+        except Exception as e:
+            print(f"[InputController Error] tap failed for '{key}' (from '{raw_input}'): {e}")
+            return False
+
     def close(self) -> None:
         """Stop background listener."""
+        self.release_all()
         if self._listener and self._listener.is_alive():
             self._listener.stop()

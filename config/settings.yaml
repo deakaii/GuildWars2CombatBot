@@ -78,6 +78,23 @@ last_selected:
   build: Power Deadeye
   elite_spec: Deadeye
   profession: Thief
+navigation:
+  arc_limit_deg: 60
+  arrive_dwell_s: 0.6
+  combat_mode: fight
+  combat_timeout_s: 30
+  enabled_kinds:
+  - waypoint
+  - landmark
+  heading_tolerance_deg: 12
+  invert_turn: false
+  max_stuck_attempts: 5
+  mount_min_distance: 120
+  stuck_min_progress: 3
+  stuck_window_s: 3.0
+  target_timeout_s: 240
+  tick_interval: 0.05
+  unlock_radius: 12
 recording:
   enabled: false
   keep: 5
