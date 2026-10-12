@@ -29,6 +29,7 @@ DEFAULTS = {
     "arc_limit_deg": 60.0,
     "invert_turn": False,
     "stuck_window_s": 3.0,
+    "block_window_s": 1.2,
     "stuck_min_progress": 3.0,
     "max_stuck_attempts": 7,
     "target_timeout_s": 240.0,
@@ -238,6 +239,7 @@ class Navigator:
         self._turn_check = None      # [since, progress_deg, last_heading, start_pos, key] while turning
         self._unstuck_side: Optional[int] = None   # +1 right / -1 left, chosen once per target
         self._maneuver_name = ""
+        self._step_track = (0.0, (0.0, 0.0))
 
     def _load_map(self, map_id: int) -> bool:
         self.map_id = map_id
@@ -359,14 +361,26 @@ class Navigator:
             self._samples.clear()
             return "TURNING"
 
-        self._samples.append((now, self.dist))
+        self._samples.append((now, self.dist, self.last.pos))
         window = self.cfg["stuck_window_s"]
         while len(self._samples) > 1 and self._samples[1][0] <= now - window:
             self._samples.popleft()
-        t0, d0 = self._samples[0]
+        t0, d0, _ = self._samples[0]
         if now - t0 >= window and d0 - self.dist < self.cfg["stuck_min_progress"]:
             return self._on_stuck(now)
+        if self._blocked(now):      # pinned against something: don't wait the full stuck window
+            return self._on_stuck(now)
         return "MOVING"
+
+    def _blocked(self, now: float) -> bool:
+        """Forward held but position hasn't changed (< 1 unit) for block_window_s."""
+        bw = self.cfg["block_window_s"]
+        if not self._samples or now - self._samples[0][0] < bw:
+            return False
+        for t, _, pos in reversed(self._samples):
+            if t <= now - bw:
+                return distance(pos, self.last.pos) < 1.0
+        return False
 
     def _turn_does_nothing(self, now: float, keys: Set[str]) -> bool:
         """Safety check: 1.5 s of holding turn keys must turn the character the expected way.
@@ -452,29 +466,30 @@ class Navigator:
         """Turn (in place) until facing target bearing + offset (+ = clockwise/right of the target)."""
         return {"kind": "face", "offset": math.radians(offset_deg), "seconds": timeout}
 
+    # (side: +1 = the chosen side / -1 = the other, degrees off the target line, seconds of riding)
+    # Mounted starts at 100 deg (slightly away from the obstacle) since the raptor can't back off first
+    MOUNTED_DETOURS = [(1, 100, 2.5), (1, 100, 4.0), (1, 110, 6.0), (-1, 100, 5.0), (-1, 110, 8.0)]
+    FOOT_DETOURS = [(1, 75, 3.0), (1, 75, 5.0), (1, 100, 7.0), (-1, 75, 5.0), (-1, 100, 8.0), (-1, 120, 10.0)]
+
     def _build_maneuver(self, attempt: int, mounted: bool) -> List[Dict]:
-        """Escalating: leap/jump, then ride along the obstacle on alternating sides, further each time.
+        """Follow the obstacle on one side, further each time (finds the gap in a fence), then the
+        other side. Mounted, the last resort is dismounting, which restarts the count on foot.
         The raptor barely reverses, so it never backs up while mounted."""
         if self._unstuck_side is None:
             self._unstuck_side = self.rng.choice([1, -1])
-        side = self._unstuck_side
-        back = [] if mounted else [self._hold({"move_back"}, 0.8)]
-        if attempt == 1:
-            self._maneuver_name = "leaping" if mounted else "jumping"
-            if mounted:   # raptor leap: hold jump to charge, release to leap
-                return [self._hold({"move_forward", "jump"}, 0.7), self._hold({"move_forward"}, 1.2)]
-            return [self._hold({"move_forward"}, 0.9, tap="jump")]
-        if attempt in (2, 3):
-            sgn = side if attempt == 2 else -side
-            self._maneuver_name = f"going around on the {'right' if sgn > 0 else 'left'}"
-            return back + [self._face(75 * sgn), self._hold({"move_forward"}, 2.5 if attempt == 2 else 4.0)]
-        if mounted and not self._no_mount:
+        plan = self.MOUNTED_DETOURS if mounted else self.FOOT_DETOURS
+        if mounted and attempt > len(plan) and not self._no_mount:
             self._no_mount = True
+            self._attempts = 0
             self._maneuver_name = "dismounting to try on foot"
             return [self._hold(set(), 0.4, tap="mount"), self._hold(set(), 1.0)]
-        sgn = side if attempt % 2 == 0 else -side
-        self._maneuver_name = f"wide detour on the {'right' if sgn > 0 else 'left'}"
-        return back + [self._face(110 * sgn), self._hold({"move_forward"}, 6.0, tap="jump")]
+        rel, deg, secs = plan[min(attempt, len(plan)) - 1]
+        sgn = rel * self._unstuck_side
+        self._maneuver_name = f"following it on the {'right' if sgn > 0 else 'left'} ({secs:.0f}s)"
+        steps = [] if mounted else [self._hold({"move_back"}, 0.8)]
+        steps.append(self._face(deg * sgn))
+        steps.append(self._hold({"move_forward"}, secs, tap=None if mounted else "jump"))
+        return steps
 
     def _run_maneuver(self, now: float) -> str:
         if 0 <= self._step_idx < len(self._maneuver):
@@ -482,7 +497,7 @@ class Navigator:
             if step["kind"] == "face" and now < self._step_deadline:
                 if not self._face_tick(step["offset"]):
                     return "UNSTUCK"
-            elif now < self._step_deadline:
+            elif now < self._step_deadline and not self._detour_blocked(now, step):
                 return "UNSTUCK"
         self._step_idx += 1
         if self._step_idx >= len(self._maneuver):
@@ -491,6 +506,7 @@ class Navigator:
             return "UNSTUCK"
         step = self._maneuver[self._step_idx]
         self._step_deadline = now + step["seconds"]
+        self._step_track = (now, self.last.pos)
         if step["kind"] == "face":
             self._face_tick(step["offset"])
         else:
@@ -498,6 +514,18 @@ class Navigator:
             if step["tap"]:
                 self.inp.tap(step["tap"])
         return "UNSTUCK"
+
+    def _detour_blocked(self, now: float, step: Dict) -> bool:
+        """End a detour early if it's pinned too (the next attempt then tries further/elsewhere)."""
+        if "move_forward" not in step["keys"]:
+            return False
+        t0, p0 = self._step_track
+        if now - t0 < self.cfg["block_window_s"]:
+            return False
+        if distance(p0, self.last.pos) >= 1.0:
+            self._step_track = (now, self.last.pos)
+            return False
+        return True
 
     def _face_tick(self, offset: float) -> bool:
         """One tick of turning toward target bearing + offset. True once within 15 degrees."""

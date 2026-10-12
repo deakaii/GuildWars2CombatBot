@@ -93,6 +93,34 @@ class World:
                         textbox_focused=False, game_focused=True, character="Tester")
 
 
+def _crosses(p, q, a, b):
+    def o(u, v, w):
+        return (v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0])
+    return o(p, q, a) * o(p, q, b) < 0 and o(a, b, p) * o(a, b, q) < 0
+
+
+class FenceWorld(World):
+    """World with fence segments; blocked moves slide along the fence like in GW2."""
+
+    def __init__(self, *args, segs=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self.segs = segs
+
+    def read(self):
+        old = list(self.pos)
+        st = super().read()
+        hit = [seg for seg in self.segs if _crosses(old, self.pos, *seg)]
+        if not hit:
+            return st
+        (ax, ay), (bx, by) = hit[0]
+        length = math.hypot(bx - ax, by - ay)
+        tx, ty = (bx - ax) / length, (by - ay) / length
+        d = (self.pos[0] - old[0]) * tx + (self.pos[1] - old[1]) * ty
+        slid = [old[0] + 0.7 * d * tx, old[1] + 0.7 * d * ty]
+        self.pos = old if any(_crosses(old, slid, *seg) for seg in self.segs) else slid
+        return NavState(**{**st.__dict__, "pos": tuple(self.pos)})
+
+
 class FakeCombat:
     def __init__(self):
         self.begun = self.ended = 0
@@ -182,6 +210,20 @@ class TestNavigator(unittest.TestCase):
                 self.run_until(nav, lambda s: s == "DONE")
                 self.assertEqual(self.progress.done("Tester", 15), {"poi:7"}, self.logs)
 
+    def test_finds_the_gate_of_a_fenced_pen(self):
+        cx, h = 200.37, 30.0      # 60x60 pen around the POI, 20u gate in the far wall
+        pen = [((cx - h, -h), (cx - h, h)), ((cx - h, h), (cx + h, h)), ((cx - h, -h), (cx + h, -h)),
+               ((cx + h, -h), (cx + h, -10)), ((cx + h, 10), (cx + h, h))]
+        for mounted in (False, True):
+            with self.subTest(mounted=mounted):
+                self.tearDown()
+                self.setUp()
+                world = FenceWorld(self.clock, self.inp, segs=pen)
+                nav = self.make(world, targets=[Target("poi:6", "landmark", "Ranch", (cx, 0.0))],
+                                mount_min_distance=120 if mounted else 10_000)
+                self.run_until(nav, lambda s: s == "DONE")
+                self.assertEqual(self.progress.done("Tester", 15), {"poi:6"}, self.logs)
+
     def test_blocked_target_is_deferred_before_skipping(self):
         world = World(self.clock, self.inp, wall_x=30.0)
         blocked = Target("poi:9", "landmark", "Behind wall", (100.0, 0.0))
@@ -194,24 +236,28 @@ class TestNavigator(unittest.TestCase):
         self.assertEqual(order, [("poi:8", "done"), ("poi:9", "skipped")])
         self.assertTrue(any("come back to it" in m for m in self.logs))
 
-    def test_mounted_unstuck_leaps_and_faces_sideways(self):
+    def test_mounted_unstuck_follows_one_side_then_dismounts(self):
         world = World(self.clock, self.inp, wall_x=30.0)
         nav = self.make(world, targets=[Target("poi:9", "landmark", "Behind wall", (300.0, 0.0))],
                         mount_min_distance=120)
-        jump_held = False
-        for _ in range(2000):
+        for _ in range(3000):
             nav.step()
-            jump_held |= "jump" in self.inp.held
-            if "going around" in " ".join(self.logs):
+            if any("dismounting" in m for m in self.logs):
                 break
-        self.assertTrue(jump_held, "raptor leap holds jump instead of tapping it")
-        self.assertNotIn("move_back", self.inp.held)
-        for _ in range(60):                      # face step: turn ~75 deg off the target, then ride
-            nav.step()
-            if self.inp.held == {"move_forward"}:
-                break
-        off = math.degrees(abs(nav.err))
-        self.assertTrue(55 <= off <= 95, off)
+        stuck = [m for m in self.logs if "Stuck (attempt" in m]
+        sides = [m.split("on the ")[1].split(" ")[0] for m in stuck if "following" in m]
+        self.assertEqual(len(sides), 5, stuck)
+        self.assertEqual(len(set(sides[:3])), 1, "first three detours keep to one side")
+        self.assertNotEqual(sides[3], sides[0], "then switches side")
+        self.assertNotIn("move_back", "".join(stuck))
+
+    def test_blocked_is_detected_fast(self):
+        world = World(self.clock, self.inp, wall_x=30.0)
+        nav = self.make(world, targets=[Target("poi:9", "landmark", "Behind wall", (300.0, 0.0))])
+        self.run_until(nav, lambda s: s == "MOVING")
+        self.run_until(nav, lambda s: s == "UNSTUCK")
+        pinned_at = 30.0 / 12.0                     # walk 30u at 12 u/s, then pinned
+        self.assertLess(self.clock.t, pinned_at + 2.0)
 
     def test_combat_hands_over_and_resumes(self):
         world = World(self.clock, self.inp)
