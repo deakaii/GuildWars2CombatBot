@@ -144,11 +144,14 @@ class Navigator:
             return self._set("NO_LINK")
         self.character = s.character or "unknown"
 
-        if s.map_open or s.textbox_focused or not s.game_focused or not self.inp.is_game_focused():
+        mouse_held = getattr(self.inp, "mouse_buttons_held", lambda: False)()
+        if (s.map_open or s.textbox_focused or not s.game_focused or not self.inp.is_game_focused()
+                or mouse_held):
             self._release()
             self._maneuver = None
             self._samples.clear()
-            return self._set("PAUSED")
+            self._turn_check = None
+            return self._set("PAUSED_MOUSE" if mouse_held else "PAUSED")
 
         if s.map_id != self.map_id:
             if not self._load_map(s.map_id):
@@ -403,9 +406,10 @@ class Navigator:
             why = ("Turning is reversed. Set navigation.invert_turn: true in config/settings.yaml "
                    "(or swap turn_left/turn_right in keybinds.yaml).")
         elif "move_forward" not in keys and moved > 10:
-            why = (f"You moved {fmt_dist(moved)} without W held, so [{bound}] is most likely STRAFE in your game. "
-                   f"In GW2 Options > Control Options, give 'Turn Left' / 'Turn Right' a key (e.g. a secondary "
-                   f"bind) and put those keys as turn_left / turn_right 'user' in config/keybinds.yaml.")
+            why = (f"You moved {fmt_dist(moved)} without W held, so [{bound}] acted as STRAFE. In GW2 that happens "
+                   f"while the right mouse button is held (mouse-look) or with Action Camera on - keep the mouse "
+                   f"still and Action Camera off while navigating. If [{bound}] is bound to strafe in Options > "
+                   f"Control Options, set turn_left / turn_right in config/keybinds.yaml to your Turn keys.")
         else:
             why = (f"[{bound}] doesn't seem to be bound to '{key.replace('_', ' ').title()}' in GW2. Check Options > "
                    f"Control Options and the turn_left / turn_right 'user' keys in config/keybinds.yaml.")

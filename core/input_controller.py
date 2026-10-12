@@ -218,6 +218,14 @@ class InputController:
             pydirectinput.keyUp(action_str)
         return True
 
+    @staticmethod
+    def mouse_buttons_held() -> bool:
+        """True while the user physically holds the left or right mouse button. In GW2, right-button
+        mouse-look turns A/D into strafe (and both buttons = run forward), so navigation pauses."""
+        import ctypes
+        get = ctypes.windll.user32.GetAsyncKeyState
+        return bool((get(0x01) & 0x8000) or (get(0x02) & 0x8000))
+
     def is_game_focused(self) -> bool:
         """Returns True if Guild Wars 2 is the active window (or if guard is disabled)."""
         if not self.require_game_focus:

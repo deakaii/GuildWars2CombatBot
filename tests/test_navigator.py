@@ -236,6 +236,16 @@ class TestNavigator(unittest.TestCase):
         self.assertEqual(nav.step(), "PAUSED")
         self.assertEqual(self.inp.held, set())
 
+    def test_pauses_while_mouse_button_held(self):
+        world = World(self.clock, self.inp)
+        nav = self.make(world)
+        self.run_until(nav, lambda s: s == "MOVING")
+        self.inp.mouse_buttons_held = lambda: True       # user grabs the camera
+        self.assertEqual(nav.step(), "PAUSED_MOUSE")
+        self.assertEqual(self.inp.held, set())
+        self.inp.mouse_buttons_held = lambda: False
+        self.assertIn(nav.step(), ("MOVING", "TURNING"))
+
     def test_skip_request(self):
         nav = self.make(World(self.clock, self.inp))
         nav.step()
