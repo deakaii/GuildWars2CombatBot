@@ -118,7 +118,7 @@ class Navigator:
             while not should_stop():
                 t0 = self.clock()
                 state = self.step()
-                if state in ("DONE", "NO_DATA"):
+                if state in ("DONE", "NO_DATA", "TURN_FAIL"):
                     return state
                 sleep(max(0.01, self.cfg["tick_interval"] - (self.clock() - t0)))
             return "STOPPED"
@@ -232,6 +232,8 @@ class Navigator:
         self._step_idx = -1
         self._step_deadline = 0.0
         self._no_mount = False
+        self._turn_key: Optional[str] = None
+        self._turn_check = None      # [since, progress_deg, last_heading, start_pos, key] while turning
 
     def _load_map(self, map_id: int) -> bool:
         self.map_id = map_id
@@ -332,10 +334,20 @@ class Navigator:
         keys = set()
         if abs(err) > tol:
             right = (err > 0) != bool(self.cfg["invert_turn"])
-            keys.add("turn_right" if right else "turn_left")
+            key = "turn_right" if right else "turn_left"
+            # Target (nearly) behind: err flips sign around 180 deg, so keep the direction already chosen
+            if self._turn_key and abs(err) > math.radians(135):
+                key = self._turn_key
+            self._turn_key = key
+            keys.add(key)
+        else:
+            self._turn_key = None
         if abs(err) < arc:
             keys.add("move_forward")
         self._apply(keys)
+
+        if self._turn_does_nothing(now, keys):
+            return "TURN_FAIL"
 
         if "move_forward" not in keys:
             self._samples.clear()
@@ -349,6 +361,54 @@ class Navigator:
         if now - t0 >= window and d0 - self.dist < self.cfg["stuck_min_progress"]:
             return self._on_stuck(now)
         return "MOVING"
+
+    def _turn_does_nothing(self, now: float, keys: Set[str]) -> bool:
+        """Safety check: 1.5 s of holding turn keys must turn the character the expected way.
+        Catches A/D bound to strafe, reversed turning, or a stuck autorun before the bot runs off.
+        Progress is summed per tick across left/right switches, so dithering can't hide a fault."""
+        s = self.last
+        key = self._turn_key
+        if key is None or key not in keys or s is None:
+            self._turn_check = None
+            return False
+
+        def sign(k):
+            return (1 if k == "turn_right" else -1) * (-1 if self.cfg["invert_turn"] else 1)
+
+        if self._turn_check is None:
+            self._turn_check = [now, 0.0, s.heading_rad, s.pos, key]
+            return False
+        chk = self._turn_check
+        # heading change since last tick, credited to the key that was held during it (+ = expected way)
+        chk[1] += math.degrees(wrap_angle(s.heading_rad - chk[2])) * sign(chk[4])
+        chk[2], chk[4] = s.heading_rad, key
+        since, progress, _, p0, _ = chk
+        if now - since < 1.5:
+            return False
+        if progress >= 20:
+            self._turn_check = [now, 0.0, s.heading_rad, s.pos, key]
+            return False
+        turned = progress * sign(key)
+        expected = sign(key)
+
+        self._release()
+        mapper = getattr(self.inp, "mapper", None)
+        bound = mapper.translate(key).upper() if mapper else key
+        moved = distance(p0, s.pos)
+        mount = " while mounted" if s.mounted else ""
+        if progress <= -20:
+            why = ("Turning is reversed. Set navigation.invert_turn: true in config/settings.yaml "
+                   "(or swap turn_left/turn_right in keybinds.yaml).")
+        elif "move_forward" not in keys and moved > 10:
+            why = (f"You moved {fmt_dist(moved)} without W held, so [{bound}] is most likely STRAFE in your game. "
+                   f"In GW2 Options > Control Options, give 'Turn Left' / 'Turn Right' a key (e.g. a secondary "
+                   f"bind) and put those keys as turn_left / turn_right 'user' in config/keybinds.yaml.")
+        else:
+            why = (f"[{bound}] doesn't seem to be bound to '{key.replace('_', ' ').title()}' in GW2. Check Options > "
+                   f"Control Options and the turn_left / turn_right 'user' keys in config/keybinds.yaml.")
+        self.log(f"[NAV] Stopped: holding {key} [{bound}] for 1.5s turned you {turned:+.0f} deg{mount} "
+                 f"(expected {'right' if expected > 0 else 'left'}). {why}")
+        return True
 
     def _on_stuck(self, now: float) -> str:
         self._samples.clear()

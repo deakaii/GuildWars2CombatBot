@@ -54,7 +54,7 @@ class FakeInput:
 class World:
     """Advances physics by DT on every read(), using whatever keys are held."""
 
-    def __init__(self, clock, inp, pos=(0.0, 0.0), heading=0.0, wall_x=None):
+    def __init__(self, clock, inp, pos=(0.0, 0.0), heading=0.0, wall_x=None, turn="turn"):
         self.clock, self.inp = clock, inp
         self.pos, self.heading = list(pos), heading
         self.mounted = False
@@ -62,6 +62,7 @@ class World:
         self.map_open = False
         self.wall_x = wall_x                    # impassable vertical line
         self.turn_rate = math.radians(200)      # rad/s
+        self.turn = turn                        # "turn" | "reversed" | "strafe" (what A/D do in game)
         self._taps_seen = 0
 
     def read(self):
@@ -71,14 +72,16 @@ class World:
                 self.mounted = not self.mounted
         self._taps_seen = len(self.inp.taps)
         held = self.inp.held
-        if "turn_right" in held:
-            self.heading += self.turn_rate * DT
-        if "turn_left" in held:
-            self.heading -= self.turn_rate * DT
         speed = 25.0 if self.mounted else 12.0
+        side = ("turn_right" in held) - ("turn_left" in held)
+        if self.turn != "strafe":
+            self.heading += side * self.turn_rate * DT * (-1 if self.turn == "reversed" else 1)
         step = speed * DT * (("move_forward" in held) - 0.5 * ("move_back" in held))
         nx = self.pos[0] + step * math.cos(self.heading)
         ny = self.pos[1] + step * math.sin(self.heading)
+        if self.turn == "strafe":
+            nx += speed * DT * side * math.cos(self.heading + math.pi / 2)
+            ny += speed * DT * side * math.sin(self.heading + math.pi / 2)
         if self.wall_x is None or (self.pos[0] < self.wall_x) == (nx < self.wall_x):
             self.pos = [nx, ny]
         return NavState(tick=int(self.clock.t / DT), map_id=15, pos=tuple(self.pos), heading_rad=self.heading,
@@ -194,6 +197,34 @@ class TestNavigator(unittest.TestCase):
         nav.step()
         self.assertIn("poi:1", self.progress.excluded("Tester", 15))
         self.assertEqual(nav.target.id, "poi:2")
+
+    def test_target_behind_does_not_flip_flop(self):
+        world = World(self.clock, self.inp, heading=math.pi)          # target dead astern
+        nav = self.make(world, targets=[Target("poi:5", "landmark", "Behind", (100.0, 0.0))])
+        turn_keys = []
+        for _ in range(20):
+            nav.step()
+            turn_keys.append(nav._turn_key)
+        self.assertEqual(len({k for k in turn_keys if k}), 1, turn_keys)
+        self.run_until(nav, lambda s: s == "DONE")
+
+    def test_strafe_binds_stop_navigation(self):
+        world = World(self.clock, self.inp, heading=math.pi, turn="strafe")
+        nav = self.make(world, targets=[Target("poi:5", "landmark", "Behind", (100.0, 0.0))])
+        self.assertEqual(self.run_until(nav, lambda s: s == "TURN_FAIL", max_ticks=200), "TURN_FAIL")
+        self.assertIn("STRAFE", self.logs[-1])
+        self.assertEqual(self.inp.held, set())
+
+    def test_reversed_turning_stops_navigation(self):
+        world = World(self.clock, self.inp, heading=math.pi / 2, turn="reversed")
+        nav = self.make(world, targets=[Target("poi:5", "landmark", "East", (100.0, 0.0))])
+        self.run_until(nav, lambda s: s == "TURN_FAIL", max_ticks=200)
+        self.assertIn("invert_turn", self.logs[-1])
+
+    def test_invert_turn_fixes_reversed_turning(self):
+        world = World(self.clock, self.inp, heading=math.pi / 2, turn="reversed")
+        nav = self.make(world, targets=[Target("poi:5", "landmark", "East", (100.0, 0.0))], invert_turn=True)
+        self.run_until(nav, lambda s: s == "DONE")
 
     def test_trace_logs_state_changes(self):
         lines = []
