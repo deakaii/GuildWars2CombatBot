@@ -195,6 +195,14 @@ class TestNavigator(unittest.TestCase):
         self.assertIn("poi:1", self.progress.excluded("Tester", 15))
         self.assertEqual(nav.target.id, "poi:2")
 
+    def test_trace_logs_state_changes(self):
+        lines = []
+        nav = Navigator(World(self.clock, self.inp), self.inp, self.progress, {"mount_min_distance": 10_000},
+                        targets_for_map=lambda m: TARGETS, log=self.logs.append, clock=self.clock,
+                        trace=lines.append)
+        self.run_until(nav, lambda s: s == "MOVING")
+        self.assertTrue(any("->MOVING" in l and "dist=" in l and "keys=" in l for l in lines))
+
     def test_run_releases_keys_on_stop(self):
         nav = self.make(World(self.clock, self.inp))
         ticks = iter(range(30))

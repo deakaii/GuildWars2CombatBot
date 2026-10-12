@@ -69,7 +69,8 @@ class Navigator:
     def __init__(self, link, inp, progress, config: Optional[Dict] = None,
                  targets_for_map: Callable[[int], List[Target]] = get_map_targets,
                  combat=None, log: Callable[[str], None] = print,
-                 clock: Callable[[], float] = time.monotonic, rng: Optional[random.Random] = None):
+                 clock: Callable[[], float] = time.monotonic, rng: Optional[random.Random] = None,
+                 trace: Optional[Callable[[str], None]] = None):
         self.link = link
         self.inp = inp
         self.progress = progress
@@ -78,6 +79,8 @@ class Navigator:
         self.targets_for_map = targets_for_map
         self.combat = combat
         self.log = log
+        self.trace = trace          # detailed per-state/per-second lines for the session log file
+        self._last_trace = -1e9
         self.clock = clock
         self.rng = rng or random.Random()
 
@@ -199,8 +202,26 @@ class Navigator:
     # ------------------------------------------------------------------ pieces
 
     def _set(self, state: str) -> str:
+        if self.trace:
+            now = self.clock()
+            if state != self.state or now - self._last_trace >= 1.0:
+                self._last_trace = now
+                self.trace(self._trace_line(state))
         self.state = state
         return state
+
+    def _trace_line(self, state: str) -> str:
+        s = self.last
+        if s is None:
+            return f"[NAV-TRACE] {self.state}->{state} (no link)"
+        parts = [f"[NAV-TRACE] {self.state}->{state}", f"pos={s.pos[0]:.0f},{s.pos[1]:.0f}",
+                 f"face={(math.degrees(s.heading_rad) + 90) % 360:.0f}"]
+        if self.target is not None and self.dist is not None:
+            parts += [f"target={self.target.name!r}", f"dist={self.dist:.0f}", f"err={math.degrees(self.err):+.0f}"]
+        parts += [f"mounted={int(s.mounted)}", f"combat={int(s.in_combat)}", f"keys={','.join(sorted(self._held)) or '-'}"]
+        if s.map_open or s.textbox_focused or not s.game_focused:
+            parts.append(f"map_open={int(s.map_open)} chat={int(s.textbox_focused)} focus={int(s.game_focused)}")
+        return " ".join(parts)
 
     def _reset_target_state(self) -> None:
         self._target_started = self.clock()
@@ -290,7 +311,9 @@ class Navigator:
             return None
         if self._mount_pending_until is None:
             self._release()
-            self.inp.tap("mount")
+            ok = self.inp.tap("mount")
+            if self.trace:
+                self.trace(f"[NAV-TRACE] mount key tapped (sent={ok}) at dist={self.dist:.0f}")
             self._mount_pending_until = now + 2.5
             return "MOUNTING"
         if now < self._mount_pending_until:

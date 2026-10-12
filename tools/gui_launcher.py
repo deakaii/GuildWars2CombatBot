@@ -1549,7 +1549,8 @@ class ModernBotGUI:
 
         log = lambda m: self.root.after(0, self.log_message, m)
         self.navigator = Navigator(link, ctrl, self.nav_progress, nav_cfg,
-                                   combat=_Combat() if self.active_engine else None, log=log)
+                                   combat=_Combat() if self.active_engine else None, log=log,
+                                   trace=print)
         self.nav_stop = threading.Event()
         stop_presses = ctrl.stop_key_presses
 
@@ -1685,7 +1686,7 @@ class SessionLog:
     """File-like stdout: every line goes to the session file (with milliseconds); all but the
     engine's per-tick telemetry also go to the GUI activity log via `show`."""
 
-    HIDDEN_IN_GUI = ("Tick #",)
+    HIDDEN_IN_GUI = ("Tick #", "[NAV-TRACE]")
 
     def __init__(self, path: str, show):
         self.file = open(path, "a", encoding="utf-8", buffering=1)
